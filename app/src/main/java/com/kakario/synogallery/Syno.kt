@@ -29,6 +29,16 @@ object Syno {
     /** 이번 실행 동안만 들고 있는 비밀번호 (세션 만료 시 재로그인용) */
     private var sessionPassword: String = ""
 
+    /** QuickConnect로 찾은 실제 주소 */
+    @Volatile
+    private var resolvedBase: String? = null
+    private var resolvedFor: String? = null
+    private var qcInsecure = false
+
+    /** 현재 연결 경로 표시용 (예: "QuickConnect · 내부망") */
+    var route: String = ""
+        private set
+
     class SynoException(val code: Int, message: String) : Exception(message)
 
     fun init() = rebuildClient()
@@ -37,7 +47,7 @@ object Syno {
         val b = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
-        if (Settings.trustAll) {
+        if (Settings.trustAll || qcInsecure) {
             val tm = object : X509TrustManager {
                 override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
                 override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
@@ -59,7 +69,10 @@ object Syno {
         return h
     }
 
-    private val base get() = normalizeHost(Settings.host)
+    private val base get() = resolvedBase ?: normalizeHost(Settings.host)
+
+    /** 지금 실제로 접속 중인 주소 */
+    val currentBase get() = base
     private val prefix get() = if (Settings.sharedSpace) "SYNO.FotoTeam" else "SYNO.Foto"
 
     // ───────────────── 호출 공통 ─────────────────
@@ -107,17 +120,60 @@ object Syno {
 
     private fun isSessionError(e: Exception) = e is SynoException && e.code in listOf(106, 107, 119)
 
-    /** 세션이 끊기면 한 번 재로그인 후 다시 시도 */
-    private suspend fun <T> call(block: () -> T): T = withContext(Dispatchers.IO) {
+    private fun isNetworkError(e: Exception) = e is java.io.IOException
+
+    /**
+     * 세션이 끊기면 재로그인 후 다시 시도.
+     * QuickConnect 접속 중 연결이 끊기면(와이파이↔LTE 전환 등) 주소를 다시 찾아서 재시도.
+     */
+    private suspend fun <T> call(block: suspend () -> T): T = withContext(Dispatchers.IO) {
         try {
             block()
         } catch (e: Exception) {
             val pw = sessionPassword.ifEmpty { Settings.password }
-            if (isSessionError(e) && pw.isNotEmpty()) {
-                loginBlocking(Settings.host, Settings.account, pw, null)
-                block()
-            } else throw friendly(e)
+            val qc = QuickConnect.extractId(Settings.host) != null
+            try {
+                when {
+                    isSessionError(e) && pw.isNotEmpty() -> {
+                        doLogin(Settings.host, Settings.account, pw, null, reResolve = false)
+                        block()
+                    }
+                    qc && isNetworkError(e) && pw.isNotEmpty() -> {
+                        doLogin(Settings.host, Settings.account, pw, null, reResolve = true)
+                        block()
+                    }
+                    else -> throw e
+                }
+            } catch (e2: Exception) {
+                throw friendly(e2)
+            }
         }
+    }
+
+    /** 입력한 주소를 실제 접속 주소로 (QuickConnect ID면 찾아서) */
+    private suspend fun prepareHost(host: String, reResolve: Boolean): String {
+        val id = QuickConnect.extractId(host)
+        if (id == null) {
+            resolvedBase = null
+            resolvedFor = null
+            route = ""
+            if (qcInsecure) {
+                qcInsecure = false
+                rebuildClient()
+            }
+            return normalizeHost(host)
+        }
+        val cached = resolvedBase
+        if (!reResolve && cached != null && resolvedFor.equals(id, ignoreCase = true)) return cached
+        val r = QuickConnect.resolve(id)
+        resolvedBase = r.base
+        resolvedFor = id
+        route = "QuickConnect · ${r.route}"
+        if (qcInsecure != r.insecure) {
+            qcInsecure = r.insecure
+            rebuildClient()
+        }
+        return r.base
     }
 
     private fun friendly(e: Exception): Exception = when (e) {
@@ -130,7 +186,8 @@ object Syno {
 
     // ───────────────── 로그인 ─────────────────
 
-    private fun loginBlocking(host: String, account: String, password: String, otp: String?) {
+    private suspend fun doLogin(host: String, account: String, password: String, otp: String?, reResolve: Boolean) {
+        val target = prepareHost(host, reResolve)
         val params = mutableMapOf(
             "api" to "SYNO.API.Auth",
             "version" to "6",
@@ -141,7 +198,7 @@ object Syno {
             "format" to "sid",
         )
         if (!otp.isNullOrBlank()) params["otp_code"] = otp.trim()
-        val data = post(normalizeHost(host), params, withSid = false)
+        val data = post(target, params, withSid = false)
         sid = data.optString("sid").ifEmpty { throw SynoException(-1, "로그인 응답에 세션이 없어요.") }
         sessionPassword = password
     }
@@ -149,7 +206,7 @@ object Syno {
     suspend fun login(host: String, account: String, password: String, otp: String?) =
         withContext(Dispatchers.IO) {
             try {
-                loginBlocking(host, account, password, otp)
+                doLogin(host, account, password, otp, reResolve = true)
             } catch (e: Exception) {
                 throw friendly(e)
             }
@@ -157,6 +214,9 @@ object Syno {
 
     fun logout() {
         sid = null
+        resolvedBase = null
+        resolvedFor = null
+        route = ""
         sessionPassword = ""
     }
 

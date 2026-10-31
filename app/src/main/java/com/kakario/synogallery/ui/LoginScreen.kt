@@ -56,7 +56,7 @@ fun LoginScreen(onDone: () -> Unit) {
 
     fun doLogin() {
         if (host.isBlank() || account.isBlank() || pass.isEmpty()) {
-            error = "주소, 아이디, 비밀번호를 모두 입력해 주세요."
+            error = "QuickConnect ID(또는 주소), 아이디, 비밀번호를 모두 입력해 주세요."
             return
         }
         scope.launch {
@@ -105,8 +105,8 @@ fun LoginScreen(onDone: () -> Unit) {
         val fieldMod = Modifier.fillMaxWidth().widthIn(max = 480.dp).padding(vertical = 4.dp)
         OutlinedTextField(
             host, { host = it }, fieldMod,
-            label = { Text("NAS 주소") },
-            placeholder = { Text("예: mynas.synology.me:5001") },
+            label = { Text("QuickConnect ID 또는 NAS 주소") },
+            placeholder = { Text("예: myid 또는 mynas.synology.me:5001") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
         )
@@ -144,7 +144,7 @@ fun LoginScreen(onDone: () -> Unit) {
         }
 
         Text(
-            "주소는 DDNS 주소나 IP:포트로 넣어 주세요.\nhttp는 5000, https는 5001 포트가 기본이에요.\nQuickConnect ID는 아직 지원하지 않아요.",
+            "QuickConnect ID만 넣으면 집 와이파이·외부망을 알아서 찾아 연결해요.\nDDNS 주소나 IP:포트로 직접 넣어도 돼요 (http 5000, https 5001).",
             color = Color.Gray, style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.padding(top = 20.dp),
         )

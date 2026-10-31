@@ -143,9 +143,15 @@ fun SettingsScreen(nav: NavController, onLogout: () -> Unit) {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
                     Text("접속 중", style = MaterialTheme.typography.bodyMedium)
                     Text(
-                        "${Settings.account} @ ${Syno.normalizeHost(Settings.host)}",
+                        "${Settings.account} @ ${Settings.host}",
                         color = Color.Gray, style = MaterialTheme.typography.bodySmall,
                     )
+                    if (Syno.route.isNotEmpty()) {
+                        Text(
+                            "${Syno.route} (${Syno.currentBase})",
+                            color = Color.Gray, style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                 }
             }
             item {
