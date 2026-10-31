@@ -64,6 +64,19 @@ fun SettingsScreen(nav: NavController, onLogout: () -> Unit) {
             item { Section("보기") }
             item {
                 Choice(
+                    "첫 화면", Settings.startTab,
+                    HOME_TABS.mapIndexed { i, t -> t to i },
+                ) { Settings.startTab = it }
+            }
+            item {
+                Toggle(
+                    "비슷한 사진 모으기",
+                    "연속으로 찍은 거의 같은 사진을 한 장으로 묶고 장수를 표시해요 (촬영일 정렬일 때)",
+                    Settings.groupSimilar,
+                ) { Settings.groupSimilar = it }
+            }
+            item {
+                Choice(
                     "한 줄에 보이는 사진 수", Settings.columns,
                     (2..7).map { "$it" to it },
                 ) { Settings.columns = it }
@@ -155,10 +168,9 @@ fun SettingsScreen(nav: NavController, onLogout: () -> Unit) {
                 }
             }
             item {
-                Row(
+                Column(
                     Modifier.fillMaxWidth().padding(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     OutlinedButton(onClick = {
                         scope.launch {
@@ -169,6 +181,10 @@ fun SettingsScreen(nav: NavController, onLogout: () -> Unit) {
                             cacheMsg = "비웠어요"
                         }
                     }) { Text("사진 캐시 비우기") }
+                    OutlinedButton(onClick = {
+                        com.kakario.synogallery.Similar.clear()
+                        cacheMsg = "비슷한 사진 분석을 처음부터 다시 해요"
+                    }) { Text("비슷한 사진 다시 분석") }
                     Text(cacheMsg, color = Color.Gray, style = MaterialTheme.typography.bodySmall)
                 }
             }

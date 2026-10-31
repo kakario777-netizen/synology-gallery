@@ -21,6 +21,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.LibraryAdd
+import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Slideshow
@@ -31,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -65,6 +68,9 @@ fun ViewerScreen(start: Int, nav: NavController) {
     var ui by remember { mutableStateOf(true) }
     var info by remember { mutableStateOf(false) }
     var slideshow by remember { mutableStateOf(false) }
+    var tagEdit by remember { mutableStateOf<Item?>(null) }
+    var albumAdd by remember { mutableStateOf<Item?>(null) }
+    var tagsVersion by remember { mutableIntStateOf(0) }
 
     KeepScreenOn(Settings.keepScreenOn || slideshow)
     SystemBars(ui, darkScreen = Settings.viewerBlack)
@@ -125,6 +131,12 @@ fun ViewerScreen(start: Int, nav: NavController) {
                 IconButton(onClick = { slideshow = !slideshow }) {
                     Icon(if (slideshow) Icons.Filled.Pause else Icons.Filled.Slideshow, "슬라이드쇼", tint = Color.White)
                 }
+                IconButton(onClick = { tagEdit = current }) {
+                    Icon(Icons.AutoMirrored.Filled.Label, "태그", tint = Color.White)
+                }
+                IconButton(onClick = { albumAdd = current }) {
+                    Icon(Icons.Filled.LibraryAdd, "앨범에 추가", tint = Color.White)
+                }
                 IconButton(onClick = { info = !info }) {
                     Icon(Icons.Filled.Info, "정보", tint = Color.White)
                 }
@@ -132,13 +144,43 @@ fun ViewerScreen(start: Int, nav: NavController) {
         }
 
         AnimatedVisibility(info, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomCenter)) {
-            InfoPanel(current)
+            InfoPanel(current, tagsVersion)
         }
+    }
+
+    ViewerDialogs(
+        tagEdit = tagEdit, albumAdd = albumAdd,
+        onTagDone = { tagEdit = null; tagsVersion++ },
+        onTagClose = { tagEdit = null },
+        onAlbumClose = { albumAdd = null },
+    )
+}
+
+@Composable
+private fun ViewerDialogs(
+    tagEdit: Item?, albumAdd: Item?,
+    onTagDone: () -> Unit, onTagClose: () -> Unit, onAlbumClose: () -> Unit,
+) {
+    tagEdit?.let { item ->
+        var current by remember(item.id) { mutableStateOf<Set<Long>?>(null) }
+        var loaded by remember(item.id) { mutableStateOf(false) }
+        LaunchedEffect(item.id) {
+            current = try {
+                Syno.itemTags(item.id).map { it.id }.toSet()
+            } catch (_: Exception) {
+                null
+            }
+            loaded = true
+        }
+        if (loaded) TagEditorDialog(listOf(item.id), current ?: emptySet(), onDone = onTagDone, onDismiss = onTagClose)
+    }
+    albumAdd?.let { item ->
+        AlbumPickerDialog(listOf(item.id), onDone = onAlbumClose, onDismiss = onAlbumClose)
     }
 }
 
 @Composable
-private fun InfoPanel(item: Item) {
+private fun InfoPanel(item: Item, tagsVersion: Int) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -151,6 +193,15 @@ private fun InfoPanel(item: Item) {
         if (item.width > 0) InfoLine("해상도", "${item.width} × ${item.height}")
         if (item.size > 0) InfoLine("크기", formatSize(item.size))
         if (item.isVideo && item.duration > 0) InfoLine("길이", formatDuration(item.duration))
+        var tags by remember(item.id) { mutableStateOf<String?>(null) }
+        LaunchedEffect(item.id, tagsVersion) {
+            tags = try {
+                Syno.itemTags(item.id).joinToString(", ") { it.name }.ifEmpty { "없음" }
+            } catch (_: Exception) {
+                null
+            }
+        }
+        tags?.let { InfoLine("태그", it) }
     }
 }
 

@@ -31,6 +31,8 @@ object Settings {
     var thumbSize by P("thumbSize", "m")          // sm / m / xl
     var showFilename by P("showFilename", false)
     var squareThumbs by P("squareThumbs", true)
+    var groupSimilar by P("groupSimilar", false)
+    var startTab by P("startTab", 0)               // 0 사진 / 1 앨범 / 2 태그 / 3 폴더
 
     // 정렬·필터
     var sortBy by P("sortBy", "takentime")        // takentime / filename

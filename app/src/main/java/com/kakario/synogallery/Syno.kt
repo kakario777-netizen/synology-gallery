@@ -292,18 +292,19 @@ object Syno {
             "offset" to "$offset",
             "limit" to "$limit",
             "additional" to itemExtras,
-            "sort_by" to Settings.sortBy,
-            "sort_direction" to if (Settings.sortDesc) "desc" else "asc",
+            "sort_by" to q(Settings.sortBy),
+            "sort_direction" to q(if (Settings.sortDesc) "desc" else "asc"),
         )
         when (source) {
             is AlbumSource -> p["album_id"] = "${source.id}"
             is FolderSource -> p["folder_id"] = "${source.id}"
+            is TagSource -> p["general_tag_id"] = "${source.id}"
             AllSource -> {}
         }
         val filter = Settings.mediaFilter
         val data = if (filter != "all") {
             try {
-                post(base, p + ("type" to filter))
+                post(base, p + ("type" to q(filter)))
             } catch (e: SynoException) {
                 if (e.code in listOf(106, 107, 119)) throw e
                 post(base, p) // 서버가 type 필터를 모르면 필터 없이
@@ -385,8 +386,8 @@ object Syno {
                 "id" to "$parentId",
                 "offset" to "0",
                 "limit" to "1000",
-                "sort_by" to "filename",
-                "sort_direction" to "asc",
+                "sort_by" to q("filename"),
+                "sort_direction" to q("asc"),
             )
         )
         val arr = data.optJSONArray("list") ?: JSONArray()
@@ -395,6 +396,146 @@ object Syno {
             Folder(o.optLong("id"), o.optString("name"))
         }
     }
+
+    // ───────────────── 태그 ─────────────────
+
+    private val tagApi get() = "$prefix.Browse.GeneralTag"
+
+    suspend fun listTags(): List<Tag> = call {
+        val out = mutableListOf<Tag>()
+        var offset = 0
+        while (true) {
+            val data = post(
+                base, mapOf(
+                    "api" to tagApi, "version" to "1", "method" to "list",
+                    "offset" to "$offset", "limit" to "500",
+                    "additional" to JSONArray(listOf("thumbnail")).toString(),
+                )
+            )
+            val arr = data.optJSONArray("list") ?: JSONArray()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val th = o.optJSONObject("additional")?.optJSONObject("thumbnail")
+                out += Tag(
+                    id = o.optLong("id"),
+                    name = o.optString("name"),
+                    count = o.optInt("item_count"),
+                    cacheKey = th?.optString("cache_key").orEmpty(),
+                    thumbUnitId = th?.optLong("unit_id") ?: 0L,
+                )
+            }
+            if (arr.length() < 500) break
+            offset += 500
+        }
+        out.sortedBy { it.name.lowercase() }
+    }
+
+    /** 태그 만들기 (같은 이름이 있으면 그 태그를 돌려줌) */
+    suspend fun createTag(name: String): Long = call {
+        val data = post(base, mapOf("api" to tagApi, "version" to "1", "method" to "create", "name" to q(name.trim())))
+        data.optJSONObject("tag")?.optLong("id") ?: data.optLong("id")
+    }
+
+    suspend fun renameTag(id: Long, name: String) = call {
+        post(base, mapOf("api" to tagApi, "version" to "1", "method" to "set_name", "id" to "$id", "name" to q(name.trim())))
+        Unit
+    }
+
+    suspend fun deleteTag(id: Long) = call {
+        post(base, mapOf("api" to tagApi, "version" to "1", "method" to "delete", "id" to "[$id]"))
+        Unit
+    }
+
+    suspend fun addTags(itemIds: List<Long>, tagIds: List<Long>) = call {
+        if (itemIds.isNotEmpty() && tagIds.isNotEmpty()) post(
+            base, mapOf(
+                "api" to "$prefix.Browse.Item", "version" to "1", "method" to "add_tag",
+                "id" to JSONArray(itemIds).toString(), "tag" to JSONArray(tagIds).toString(),
+            )
+        )
+        Unit
+    }
+
+    suspend fun removeTags(itemIds: List<Long>, tagIds: List<Long>) = call {
+        if (itemIds.isNotEmpty() && tagIds.isNotEmpty()) post(
+            base, mapOf(
+                "api" to "$prefix.Browse.Item", "version" to "1", "method" to "remove_tag",
+                "id" to JSONArray(itemIds).toString(), "tag" to JSONArray(tagIds).toString(),
+            )
+        )
+        Unit
+    }
+
+    /** 사진 한 장에 붙은 태그 */
+    suspend fun itemTags(itemId: Long): List<Tag> = call {
+        val data = post(
+            base, mapOf(
+                "api" to "$prefix.Browse.Item", "version" to "1", "method" to "get",
+                "id" to "[$itemId]", "additional" to JSONArray(listOf("tag")).toString(),
+            )
+        )
+        val tags = data.optJSONArray("list")?.optJSONObject(0)?.optJSONObject("additional")?.optJSONArray("tag")
+            ?: JSONArray()
+        (0 until tags.length()).map {
+            val o = tags.getJSONObject(it)
+            Tag(o.optLong("id"), o.optString("name"), 0, "", 0L)
+        }
+    }
+
+    // ───────────────── 앨범 편집 (개인 공간) ─────────────────
+
+    suspend fun createAlbum(name: String, itemIds: List<Long>): Long = call {
+        val data = post(
+            base, mapOf(
+                "api" to "SYNO.Foto.Browse.NormalAlbum", "version" to "1", "method" to "create",
+                "name" to q(name.trim()), "item" to JSONArray(itemIds).toString(),
+            )
+        )
+        data.optJSONObject("album")?.optLong("id") ?: 0L
+    }
+
+    suspend fun addToAlbum(albumId: Long, itemIds: List<Long>) = call {
+        post(
+            base, mapOf(
+                "api" to "SYNO.Foto.Browse.NormalAlbum", "version" to "1", "method" to "add_item",
+                "id" to "$albumId", "item" to JSONArray(itemIds).toString(),
+            )
+        )
+        Unit
+    }
+
+    suspend fun removeFromAlbum(albumId: Long, itemIds: List<Long>) = call {
+        post(
+            base, mapOf(
+                "api" to "SYNO.Foto.Browse.NormalAlbum", "version" to "1", "method" to "remove_item",
+                "id" to "$albumId", "item" to JSONArray(itemIds).toString(),
+            )
+        )
+        Unit
+    }
+
+    suspend fun renameAlbum(albumId: Long, name: String) = call {
+        post(
+            base, mapOf(
+                "api" to "SYNO.Foto.Browse.Album", "version" to "1", "method" to "set_name",
+                "id" to "$albumId", "name" to q(name.trim()),
+            )
+        )
+        Unit
+    }
+
+    suspend fun deleteAlbum(albumId: Long) = call {
+        post(
+            base, mapOf(
+                "api" to "SYNO.Foto.Browse.Album", "version" to "1", "method" to "delete",
+                "id" to "[$albumId]",
+            )
+        )
+        Unit
+    }
+
+    /** 시놀로지 포토는 문자열 값을 JSON 문자열(따옴표 포함)로 받는다 */
+    private fun q(s: String): String = JSONObject.quote(s)
 
     // ───────────────── 이미지·영상 주소 ─────────────────
 

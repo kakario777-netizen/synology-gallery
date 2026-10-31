@@ -31,6 +31,7 @@ import com.kakario.synogallery.ui.HomeScreen
 import com.kakario.synogallery.ui.LoginScreen
 import com.kakario.synogallery.ui.PlayerScreen
 import com.kakario.synogallery.ui.SettingsScreen
+import com.kakario.synogallery.ui.TagDetailScreen
 import com.kakario.synogallery.ui.ViewerScreen
 
 class MainActivity : ComponentActivity() {
@@ -93,6 +94,13 @@ fun AppNav() {
         composable("home") { HomeScreen(nav) }
         composable("album/{id}/{title}") { e ->
             AlbumDetailScreen(
+                id = e.arguments?.getString("id")?.toLongOrNull() ?: 0L,
+                title = Uri.decode(e.arguments?.getString("title").orEmpty()),
+                nav = nav,
+            )
+        }
+        composable("tag/{id}/{title}") { e ->
+            TagDetailScreen(
                 id = e.arguments?.getString("id")?.toLongOrNull() ?: 0L,
                 title = Uri.decode(e.arguments?.getString("title").orEmpty()),
                 nav = nav,

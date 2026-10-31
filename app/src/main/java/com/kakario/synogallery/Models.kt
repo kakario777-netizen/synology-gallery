@@ -24,6 +24,14 @@ data class Album(
     val thumbUnitId: Long,
 )
 
+data class Tag(
+    val id: Long,
+    val name: String,
+    val count: Int,
+    val cacheKey: String,
+    val thumbUnitId: Long,
+)
+
 data class Folder(val id: Long, val name: String) {
     val shortName get() = name.trimEnd('/').substringAfterLast('/').ifEmpty { name }
 }
@@ -42,6 +50,10 @@ data class AlbumSource(val id: Long) : Source {
 
 data class FolderSource(val id: Long) : Source {
     override val key get() = "folder_$id"
+}
+
+data class TagSource(val id: Long) : Source {
+    override val key get() = "tag_$id"
 }
 
 /** 뷰어로 넘겨줄 현재 목록 */

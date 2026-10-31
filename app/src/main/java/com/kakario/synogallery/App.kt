@@ -13,6 +13,7 @@ class App : Application(), ImageLoaderFactory {
         super.onCreate()
         Settings.init(this)
         Syno.init()
+        Similar.init(this)
     }
 
     override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)
