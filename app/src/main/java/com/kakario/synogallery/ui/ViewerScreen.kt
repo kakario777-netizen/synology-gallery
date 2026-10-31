@@ -67,7 +67,7 @@ fun ViewerScreen(start: Int, nav: NavController) {
     var slideshow by remember { mutableStateOf(false) }
 
     KeepScreenOn(Settings.keepScreenOn || slideshow)
-    SystemBars(ui)
+    SystemBars(ui, darkScreen = Settings.viewerBlack)
 
     LaunchedEffect(pager) {
         snapshotFlow { pager.currentPage }.collect { ViewerStore.lastIndex = it }
@@ -82,7 +82,7 @@ fun ViewerScreen(start: Int, nav: NavController) {
         }
     }
 
-    val bg = if (Settings.viewerBlack) Color.Black else Color(0xFF121214)
+    val bg = if (Settings.viewerBlack) Color.Black else Color.White
 
     Box(Modifier.fillMaxSize().background(bg)) {
         HorizontalPager(

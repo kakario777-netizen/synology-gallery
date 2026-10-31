@@ -119,7 +119,7 @@ fun SettingsScreen(nav: NavController, onLogout: () -> Unit) {
                 ) { Settings.slideshowSec = it }
             }
             item { Toggle("볼 때 화면 켜짐 유지", null, Settings.keepScreenOn) { Settings.keepScreenOn = it } }
-            item { Toggle("완전 검은 배경", null, Settings.viewerBlack) { Settings.viewerBlack = it } }
+            item { Toggle("사진 볼 때 검은 배경", "끄면 흰 배경으로 보여요", Settings.viewerBlack) { Settings.viewerBlack = it } }
 
             item { Section("동영상") }
             item { Toggle("열면 바로 재생", null, Settings.autoPlayVideo) { Settings.autoPlayVideo = it } }
@@ -195,7 +195,7 @@ fun SettingsScreen(nav: NavController, onLogout: () -> Unit) {
 @Composable
 private fun Section(title: String) {
     Column {
-        HorizontalDivider(Modifier.padding(top = 8.dp), color = Color(0xFF2A2A2E))
+        HorizontalDivider(Modifier.padding(top = 8.dp), color = Color(0xFFE6E6EA))
         Text(
             title, color = MaterialTheme.colorScheme.primary,
             style = MaterialTheme.typography.labelLarge,

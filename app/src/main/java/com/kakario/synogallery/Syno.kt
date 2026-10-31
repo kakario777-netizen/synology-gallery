@@ -108,7 +108,7 @@ object Syno {
     private fun errorMessage(code: Int) = when (code) {
         400 -> "아이디 또는 비밀번호가 틀렸어요."
         401 -> "비활성화된 계정이에요."
-        402 -> "이 계정은 권한이 없어요."
+        402 -> "이 계정은 로그인 권한이 없어요."
         403 -> "2단계 인증 코드(OTP)를 입력해 주세요."
         404 -> "OTP 코드가 맞지 않아요."
         407 -> "로그인 시도가 많아 IP가 차단됐어요."
@@ -188,25 +188,85 @@ object Syno {
 
     private suspend fun doLogin(host: String, account: String, password: String, otp: String?, reResolve: Boolean) {
         val target = prepareHost(host, reResolve)
-        val params = mutableMapOf(
-            "api" to "SYNO.API.Auth",
-            "version" to "6",
-            "method" to "login",
-            "account" to account,
-            "passwd" to password,
-            "session" to "SynologyPhotos",
-            "format" to "sid",
+        // 'SynologyPhotos' 세션이 거절(402)되면 일반 DSM 세션으로 다시 시도
+        for (session in listOf("SynologyPhotos", "webui")) {
+            val params = mutableMapOf(
+                "api" to "SYNO.API.Auth",
+                "version" to "6",
+                "method" to "login",
+                "account" to account,
+                "passwd" to password,
+                "session" to session,
+                "format" to "sid",
+            )
+            if (!otp.isNullOrBlank()) params["otp_code"] = otp.trim()
+            try {
+                val data = post(target, params, withSid = false)
+                sid = data.optString("sid").ifEmpty { throw SynoException(-1, "로그인 응답에 세션이 없어요.") }
+                sessionPassword = password
+                return
+            } catch (e: SynoException) {
+                if (e.code != 402) throw e
+            }
+        }
+        throw SynoException(
+            402,
+            "비밀번호는 맞지만 NAS가 이 계정의 접속을 막았어요.\n" +
+                "DSM 제어판 → 사용자 및 그룹 → 이 계정 → 응용 프로그램에서 'Synology Photos'를 허용으로 바꿔 주세요."
         )
-        if (!otp.isNullOrBlank()) params["otp_code"] = otp.trim()
-        val data = post(target, params, withSid = false)
-        sid = data.optString("sid").ifEmpty { throw SynoException(-1, "로그인 응답에 세션이 없어요.") }
-        sessionPassword = password
+    }
+
+    /** 로그인 후 시놀로지 포토를 실제로 쓸 수 있는지 확인 */
+    private fun checkPhotos(target: String) {
+        val info = try {
+            post(
+                target,
+                mapOf("api" to "SYNO.API.Info", "version" to "1", "method" to "query", "query" to "SYNO.Foto.Browse.Item"),
+                withSid = false,
+            )
+        } catch (e: Exception) {
+            null
+        }
+        if (info != null && !info.has("SYNO.Foto.Browse.Item")) {
+            throw SynoException(
+                -2,
+                "NAS에 Synology Photos가 없어요.\n패키지 센터에서 Synology Photos를 설치해 주세요. (DSM 7 이상 필요)"
+            )
+        }
+        try {
+            post(
+                target,
+                mapOf(
+                    "api" to "$prefix.Browse.Item", "version" to "1", "method" to "list",
+                    "offset" to "0", "limit" to "1",
+                ),
+            )
+        } catch (e: SynoException) {
+            when (e.code) {
+                105, 402 -> throw SynoException(
+                    105,
+                    "이 계정은 Synology Photos 권한이 없어요.\n" +
+                        "DSM 제어판 → 사용자 및 그룹 → 이 계정 → 응용 프로그램에서 'Synology Photos'를 허용으로 바꿔 주세요."
+                )
+                // 개인 공간이 없으면(사용자 홈 서비스 꺼짐) 공유 공간으로 자동 전환
+                else -> if (!Settings.sharedSpace) {
+                    Settings.sharedSpace = true
+                    try {
+                        post(target, mapOf("api" to "SYNO.FotoTeam.Browse.Item", "version" to "1", "method" to "list", "offset" to "0", "limit" to "1"))
+                    } catch (e2: SynoException) {
+                        Settings.sharedSpace = false
+                        throw SynoException(e.code, "사진 목록을 열 수 없어요 (코드 ${e.code}).\nDSM에서 '사용자 홈 서비스'가 켜져 있는지 확인해 주세요.")
+                    }
+                }
+            }
+        }
     }
 
     suspend fun login(host: String, account: String, password: String, otp: String?) =
         withContext(Dispatchers.IO) {
             try {
                 doLogin(host, account, password, otp, reResolve = true)
+                checkPhotos(base)
             } catch (e: Exception) {
                 throw friendly(e)
             }

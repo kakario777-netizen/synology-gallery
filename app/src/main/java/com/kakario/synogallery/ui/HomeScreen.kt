@@ -143,7 +143,7 @@ private fun AlbumCard(a: Album, onClick: () -> Unit) {
                 .fillMaxWidth()
                 .aspectRatio(1f)
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFF1C1C1F))
+                .background(Color(0xFFEFEFF2))
         ) {
             if (a.thumbUnitId != 0L) {
                 val key = Syno.thumbKey(a.thumbUnitId, a.cacheKey, "m")

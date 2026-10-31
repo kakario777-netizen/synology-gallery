@@ -259,7 +259,7 @@ fun Thumb(item: Item, onClick: () -> Unit) {
     Box(
         Modifier
             .aspectRatio(1f)
-            .background(Color(0xFF1C1C1F))
+            .background(Color(0xFFEFEFF2))
             .clickable(onClick = onClick)
     ) {
         AsyncImage(

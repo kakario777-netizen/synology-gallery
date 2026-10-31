@@ -4,13 +4,15 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -34,18 +36,25 @@ import com.kakario.synogallery.ui.ViewerScreen
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.light(android.graphics.Color.WHITE, android.graphics.Color.WHITE),
+        )
         setContent {
             MaterialTheme(
-                colorScheme = darkColorScheme(
-                    primary = Color(0xFF4FC3F7),
-                    secondary = Color(0xFF81D4FA),
-                    background = Color(0xFF0B0B0C),
-                    surface = Color(0xFF121214),
-                    surfaceContainer = Color(0xFF17171A),
+                colorScheme = lightColorScheme(
+                    primary = Color(0xFF1A73E8),
+                    secondary = Color(0xFF4A90D9),
+                    background = Color.White,
+                    surface = Color.White,
+                    surfaceContainer = Color.White,
+                    onBackground = Color(0xFF1B1B1F),
+                    onSurface = Color(0xFF1B1B1F),
                 )
             ) {
-                AppNav()
+                Surface(color = Color.White, contentColor = Color(0xFF1B1B1F)) {
+                    AppNav()
+                }
             }
         }
     }
@@ -69,7 +78,7 @@ fun AppNav() {
 
     val s = start
     if (s == null) {
-        Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
         return

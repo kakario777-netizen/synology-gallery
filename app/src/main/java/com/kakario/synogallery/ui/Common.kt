@@ -35,18 +35,24 @@ fun KeepScreenOn(on: Boolean) {
 
 /** 전체화면(상태바·내비게이션바 숨김) */
 @Composable
-fun SystemBars(visible: Boolean) {
+fun SystemBars(visible: Boolean, darkScreen: Boolean = true) {
     val view = LocalView.current
     val window = (view.context as? Activity)?.window ?: return
-    DisposableEffect(visible) {
+    DisposableEffect(visible, darkScreen) {
         val c = WindowCompat.getInsetsController(window, view)
+        c.isAppearanceLightStatusBars = !darkScreen
+        c.isAppearanceLightNavigationBars = !darkScreen
         if (visible) {
             c.show(WindowInsetsCompat.Type.systemBars())
         } else {
             c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             c.hide(WindowInsetsCompat.Type.systemBars())
         }
-        onDispose { c.show(WindowInsetsCompat.Type.systemBars()) }
+        onDispose {
+            c.show(WindowInsetsCompat.Type.systemBars())
+            c.isAppearanceLightStatusBars = true
+            c.isAppearanceLightNavigationBars = true
+        }
     }
 }
 
@@ -56,7 +62,7 @@ fun MessageBox(text: String, action: String? = null, onAction: () -> Unit = {}) 
         Modifier.fillMaxWidth().padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(text, color = Color(0xFFB0B0B0), textAlign = TextAlign.Center)
+        Text(text, color = Color(0xFF6B6B70), textAlign = TextAlign.Center)
         if (action != null) TextButton(onClick = onAction) { Text(action) }
     }
 }
