@@ -1,5 +1,18 @@
 package com.kakario.synogallery.ui
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import kotlinx.coroutines.launch
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -66,11 +79,12 @@ fun ViewerScreen(start: Int, nav: NavController) {
     }
     val pager = rememberPagerState(initialPage = start.coerceIn(0, items.lastIndex)) { items.size }
     var ui by remember { mutableStateOf(true) }
-    var info by remember { mutableStateOf(false) }
     var slideshow by remember { mutableStateOf(false) }
     var tagEdit by remember { mutableStateOf<Item?>(null) }
     var albumAdd by remember { mutableStateOf<Item?>(null) }
     var tagsVersion by remember { mutableIntStateOf(0) }
+    val pos = remember { Animatable(0f) }   // 0 = 기본, 음수 = 위로(상세), 양수 = 아래로(닫기)
+    val scope = rememberCoroutineScope()
 
     KeepScreenOn(Settings.keepScreenOn || slideshow)
     SystemBars(ui, darkScreen = Settings.viewerBlack)
@@ -90,61 +104,128 @@ fun ViewerScreen(start: Int, nav: NavController) {
 
     val bg = if (Settings.viewerBlack) Color.Black else Color.White
 
-    Box(Modifier.fillMaxSize().background(bg)) {
-        HorizontalPager(
-            state = pager,
-            beyondViewportPageCount = 1,
-            modifier = Modifier.fillMaxSize(),
-        ) { page ->
-            val item = items[page]
-            if (item.isVideo) {
-                VideoPoster(item, onTap = { ui = !ui }, onPlay = { nav.navigate("player/$page") })
-            } else {
-                PhotoPage(item, onTap = { ui = !ui; if (slideshow) slideshow = false })
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val density = LocalDensity.current
+        val screenH = with(density) { maxHeight.toPx() }
+        val panelH = screenH * 0.48f
+        val dismissAt = with(density) { 120.dp.toPx() }
+        val up = (-pos.value / panelH).coerceIn(0f, 1f)
+        val down = (pos.value / screenH).coerceIn(0f, 1f)
+        val detailsOpen = pos.value <= -panelH * 0.99f
+
+        BackHandler(enabled = up > 0f) { scope.launch { pos.animateTo(0f) } }
+
+        fun settle() {
+            scope.launch {
+                val v = pos.value
+                when {
+                    v > dismissAt -> nav.popBackStack()
+                    v > 0f -> pos.animateTo(0f)
+                    v < -panelH * 0.25f -> pos.animateTo(-panelH)
+                    else -> pos.animateTo(0f)
+                }
             }
         }
 
-        val current = items[pager.currentPage]
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(bg.copy(alpha = 1f - down * 0.85f))
+                .pointerInput(panelH) {
+                    detectVerticalDragGestures(
+                        onDragEnd = { settle() },
+                        onDragCancel = { settle() },
+                    ) { change, dy ->
+                        change.consume()
+                        scope.launch { pos.snapTo((pos.value + dy).coerceAtLeast(-panelH)) }
+                    }
+                },
+        ) {
+            HorizontalPager(
+                state = pager,
+                beyondViewportPageCount = 1,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        val sc = 1f - 0.32f * up - 0.3f * down
+                        scaleX = sc
+                        scaleY = sc
+                        translationY = if (pos.value > 0f) pos.value else -panelH * 0.55f * up
+                    },
+            ) { page ->
+                val item = items[page]
+                if (item.isVideo) {
+                    VideoPoster(item, onTap = { ui = !ui }, onPlay = { nav.navigate("player/$page") })
+                } else {
+                    PhotoPage(item, onTap = {
+                        if (up > 0f) scope.launch { pos.animateTo(0f) } else ui = !ui
+                        if (slideshow) slideshow = false
+                    })
+                }
+            }
 
-        AnimatedVisibility(ui, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter)) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .background(Brush.verticalGradient(listOf(Color(0xCC000000), Color.Transparent)))
-                    .statusBarsPadding()
-                    .padding(4.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            val current = items[pager.currentPage]
+
+            AnimatedVisibility(
+                ui && down == 0f, enter = fadeIn(), exit = fadeOut(),
+                modifier = Modifier.align(Alignment.TopCenter),
             ) {
-                IconButton(onClick = { nav.popBackStack() }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "뒤로", tint = Color.White)
-                }
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        current.filename, color = Color.White, maxLines = 1,
-                        overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall,
-                    )
-                    Text(
-                        "${fullDate(current.time)} · ${pager.currentPage + 1}/${items.size}",
-                        color = Color(0xFFCCCCCC), style = MaterialTheme.typography.labelSmall,
-                    )
-                }
-                IconButton(onClick = { slideshow = !slideshow }) {
-                    Icon(if (slideshow) Icons.Filled.Pause else Icons.Filled.Slideshow, "슬라이드쇼", tint = Color.White)
-                }
-                IconButton(onClick = { tagEdit = current }) {
-                    Icon(Icons.AutoMirrored.Filled.Label, "태그", tint = Color.White)
-                }
-                IconButton(onClick = { albumAdd = current }) {
-                    Icon(Icons.Filled.LibraryAdd, "앨범에 추가", tint = Color.White)
-                }
-                IconButton(onClick = { info = !info }) {
-                    Icon(Icons.Filled.Info, "정보", tint = Color.White)
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(Brush.verticalGradient(listOf(Color(0xCC000000), Color.Transparent)))
+                        .statusBarsPadding()
+                        .padding(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = { nav.popBackStack() }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "뒤로", tint = Color.White)
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            current.filename, color = Color.White, maxLines = 1,
+                            overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall,
+                        )
+                        Text(
+                            "${fullDate(current.time)} · ${pager.currentPage + 1}/${items.size}",
+                            color = Color(0xFFCCCCCC), style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                    IconButton(onClick = { slideshow = !slideshow }) {
+                        Icon(if (slideshow) Icons.Filled.Pause else Icons.Filled.Slideshow, "슬라이드쇼", tint = Color.White)
+                    }
+                    IconButton(onClick = { tagEdit = current }) {
+                        Icon(Icons.AutoMirrored.Filled.Label, "태그", tint = Color.White)
+                    }
+                    IconButton(onClick = { albumAdd = current }) {
+                        Icon(Icons.Filled.LibraryAdd, "앨범에 추가", tint = Color.White)
+                    }
+                    IconButton(onClick = {
+                        scope.launch { pos.animateTo(if (detailsOpen) 0f else -panelH) }
+                    }) {
+                        Icon(Icons.Filled.Info, "정보", tint = Color.White)
+                    }
                 }
             }
-        }
 
-        AnimatedVisibility(info, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomCenter)) {
-            InfoPanel(current, tagsVersion)
+            // 위로 밀면 올라오는 상세 정보
+            if (up > 0f) {
+                Box(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(with(density) { panelH.toDp() })
+                        .graphicsLayer { translationY = panelH * (1f - up) }
+                        .background(Color.White, RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)),
+                ) {
+                    DetailsPanel(
+                        item = current,
+                        tagsVersion = tagsVersion,
+                        onTag = { tagEdit = current },
+                        onAlbum = { albumAdd = current },
+                    )
+                }
+            }
         }
     }
 
@@ -180,36 +261,59 @@ private fun ViewerDialogs(
 }
 
 @Composable
-private fun InfoPanel(item: Item, tagsVersion: Int) {
+private fun DetailsPanel(item: Item, tagsVersion: Int, onTag: () -> Unit, onAlbum: () -> Unit) {
     Column(
         Modifier
-            .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xEE000000))))
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .navigationBarsPadding()
-            .padding(start = 20.dp, end = 20.dp, top = 40.dp, bottom = 20.dp)
+            .padding(start = 22.dp, end = 22.dp, top = 10.dp, bottom = 16.dp)
     ) {
+        Box(
+            Modifier
+                .align(Alignment.CenterHorizontally)
+                .size(width = 36.dp, height = 4.dp)
+                .background(Color(0xFFD5D5DA), RoundedCornerShape(2.dp))
+        )
+        Text(
+            fullDate(item.time), style = MaterialTheme.typography.titleMedium,
+            color = Color(0xFF1B1B1F), modifier = Modifier.padding(top = 14.dp, bottom = 10.dp),
+        )
         InfoLine("파일명", item.filename)
-        InfoLine("촬영일", fullDate(item.time))
         if (item.width > 0) InfoLine("해상도", "${item.width} × ${item.height}")
         if (item.size > 0) InfoLine("크기", formatSize(item.size))
         if (item.isVideo && item.duration > 0) InfoLine("길이", formatDuration(item.duration))
         var tags by remember(item.id) { mutableStateOf<String?>(null) }
         LaunchedEffect(item.id, tagsVersion) {
             tags = try {
-                Syno.itemTags(item.id).joinToString(", ") { it.name }.ifEmpty { "없음" }
+                Syno.itemTags(item.id).joinToString(", ") { "#" + it.name }.ifEmpty { "없음" }
             } catch (_: Exception) {
                 null
             }
         }
-        tags?.let { InfoLine("태그", it) }
+        InfoLine("태그", tags ?: "불러오는 중…")
+        Row(Modifier.padding(top = 12.dp)) {
+            androidx.compose.material3.OutlinedButton(onClick = onTag) {
+                Icon(Icons.AutoMirrored.Filled.Label, null, modifier = Modifier.size(18.dp))
+                Text("태그 편집", modifier = Modifier.padding(start = 6.dp))
+            }
+            androidx.compose.material3.OutlinedButton(onClick = onAlbum, modifier = Modifier.padding(start = 8.dp)) {
+                Icon(Icons.Filled.LibraryAdd, null, modifier = Modifier.size(18.dp))
+                Text("앨범에 추가", modifier = Modifier.padding(start = 6.dp))
+            }
+        }
+        Text(
+            "아래로 밀면 닫혀요", color = Color.Gray, style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(top = 14.dp),
+        )
     }
 }
 
 @Composable
 private fun InfoLine(k: String, v: String) {
     Row(Modifier.padding(vertical = 3.dp)) {
-        Text(k, color = Color.Gray, modifier = Modifier.width(72.dp), style = MaterialTheme.typography.bodySmall)
-        Text(v, color = Color.White, style = MaterialTheme.typography.bodySmall)
+        Text(k, color = Color.Gray, modifier = Modifier.width(72.dp), style = MaterialTheme.typography.bodyMedium)
+        Text(v, color = Color(0xFF1B1B1F), style = MaterialTheme.typography.bodyMedium)
     }
 }
 

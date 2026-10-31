@@ -2,7 +2,6 @@ package com.kakario.synogallery
 
 import android.net.Uri
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
@@ -22,6 +21,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.fragment.app.FragmentActivity
+import com.kakario.synogallery.ui.AppLock
+import com.kakario.synogallery.ui.LockScreen
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -34,7 +37,7 @@ import com.kakario.synogallery.ui.SettingsScreen
 import com.kakario.synogallery.ui.TagDetailScreen
 import com.kakario.synogallery.ui.ViewerScreen
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(
@@ -42,23 +45,60 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.light(android.graphics.Color.WHITE, android.graphics.Color.WHITE),
         )
         setContent {
+            val accent = accentColor(Settings.accent)
             MaterialTheme(
                 colorScheme = lightColorScheme(
-                    primary = Color(0xFF1A73E8),
-                    secondary = Color(0xFF4A90D9),
+                    primary = accent,
+                    onPrimary = Color.White,
+                    primaryContainer = accent.copy(alpha = 0.14f).compositeOver(Color.White),
+                    onPrimaryContainer = accent,
+                    secondary = accent,
+                    secondaryContainer = accent.copy(alpha = 0.14f).compositeOver(Color.White),
+                    onSecondaryContainer = Color(0xFF1B1B1F),
                     background = Color.White,
                     surface = Color.White,
                     surfaceContainer = Color.White,
+                    surfaceContainerHigh = Color(0xFFF6F6F8),
+                    surfaceContainerHighest = Color(0xFFF0F0F3),
                     onBackground = Color(0xFF1B1B1F),
                     onSurface = Color(0xFF1B1B1F),
                 )
             ) {
                 Surface(color = Color.White, contentColor = Color(0xFF1B1B1F)) {
-                    AppNav()
+                    Box(Modifier.fillMaxSize()) {
+                        AppNav()
+                        if (AppLock.locked) LockScreen()
+                    }
                 }
             }
         }
     }
+
+    override fun onStart() {
+        super.onStart()
+        AppLock.onStart()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        AppLock.onStop()
+    }
+}
+
+/** 강조색 목록 (설정 화면과 같이 씀) */
+val ACCENTS = listOf(
+    "red" to "빨강", "black" to "검정", "blue" to "파랑", "green" to "초록",
+    "orange" to "주황", "purple" to "보라", "pink" to "분홍",
+)
+
+fun accentColor(name: String): Color = when (name) {
+    "black" -> Color(0xFF222226)
+    "blue" -> Color(0xFF1E6FE0)
+    "green" -> Color(0xFF239B56)
+    "orange" -> Color(0xFFEF6C00)
+    "purple" -> Color(0xFF7B4FC4)
+    "pink" -> Color(0xFFE0457B)
+    else -> Color(0xFFE53935)
 }
 
 @Composable

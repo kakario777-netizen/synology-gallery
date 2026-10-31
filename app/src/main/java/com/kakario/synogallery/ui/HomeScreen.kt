@@ -1,7 +1,10 @@
 package com.kakario.synogallery.ui
 
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -74,7 +77,16 @@ val HOME_TABS = listOf("사진", "앨범", "태그", "폴더")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(nav: NavController) {
-    var tab by rememberSaveable { mutableIntStateOf(Settings.startTab.coerceIn(0, HOME_TABS.lastIndex)) }
+    val tabs = Settings.visibleTabs()
+    val startPage = remember { tabs.indexOf(Settings.startTab).coerceAtLeast(0) }
+    val pager = rememberPagerState(initialPage = startPage) { tabs.size }
+    val scope = rememberCoroutineScope()
+    val activity = LocalContext.current as? android.app.Activity
+    var askExit by remember { mutableStateOf(false) }
+
+    // 뒤로가기: 앱 종료 전에 한 번 더 물어봄
+    BackHandler { askExit = true }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -91,18 +103,39 @@ fun HomeScreen(nav: NavController) {
         },
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
-            androidx.compose.material3.TabRow(selectedTabIndex = tab, containerColor = Color.White) {
-                HOME_TABS.forEachIndexed { i, t ->
-                    Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) })
+            if (tabs.size > 1) {
+                androidx.compose.material3.TabRow(selectedTabIndex = pager.currentPage.coerceIn(0, tabs.lastIndex), containerColor = Color.White) {
+                    tabs.forEachIndexed { i, t ->
+                        Tab(
+                            selected = pager.currentPage == i,
+                            onClick = { scope.launch { pager.animateScrollToPage(i) } },
+                            text = { Text(HOME_TABS[t]) },
+                        )
+                    }
                 }
             }
-            when (tab) {
-                0 -> GalleryGrid(AllSource, nav)
-                1 -> AlbumsTab(nav)
-                2 -> TagsTab(nav)
-                else -> FolderContent(folderId = null, nav = nav)
+            // 좌우로 밀어서 탭 이동
+            HorizontalPager(
+                state = pager,
+                modifier = Modifier.fillMaxSize(),
+                key = { tabs[it] },
+            ) { page ->
+                when (tabs[page]) {
+                    0 -> GalleryGrid(AllSource, nav)
+                    1 -> AlbumsTab(nav)
+                    2 -> TagsTab(nav)
+                    else -> FolderContent(folderId = null, nav = nav)
+                }
             }
         }
+    }
+
+    if (askExit) {
+        ConfirmDialog(
+            title = "앱 종료", text = "시놀 갤러리를 종료할까요?", confirm = "종료",
+            onConfirm = { askExit = false; activity?.finish() },
+            onDismiss = { askExit = false },
+        )
     }
 }
 

@@ -172,7 +172,7 @@ private sealed interface GridRow {
     val month: String
 }
 
-private data class HeaderRow(val label: String, override val month: String) : GridRow {
+private data class HeaderRow(val label: String, override val month: String, val count: Int) : GridRow {
     override val key get() = "h_$label"
 }
 
@@ -184,19 +184,36 @@ private data class CellRow(val index: Int, val id: Long, val members: List<Int>,
 private fun buildRows(items: List<Item>, grouping: String, groups: List<List<Int>>?): List<GridRow> {
     val out = ArrayList<GridRow>(items.size + 64)
     var last: String? = null
+    var headerAt = -1
+    var count = 0
     val units = groups ?: items.indices.map { listOf(it) }
+    fun closeHeader() {
+        if (headerAt >= 0) {
+            val h = out[headerAt] as HeaderRow
+            out[headerAt] = h.copy(count = count)
+        }
+    }
     for (g in units) {
         val first = items.getOrNull(g.first()) ?: continue
         val month = monthLabel(first.time)
         if (grouping != "none") {
-            val label = if (grouping == "day") dayLabel(first.time) else month
+            val label = when (grouping) {
+                "day" -> dayLabel(first.time)
+                "year" -> yearLabel(first.time)
+                else -> month
+            }
             if (label != last) {
-                out += HeaderRow(label, month)
+                closeHeader()
+                out += HeaderRow(label, month, 0)
+                headerAt = out.lastIndex
+                count = 0
                 last = label
             }
         }
+        count += g.size
         out += CellRow(g.first(), first.id, g, month)
     }
+    closeHeader()
     return out
 }
 
@@ -238,12 +255,13 @@ fun GalleryGrid(
     val grouping = Settings.grouping
     val stack = Settings.groupSimilar && Settings.sortBy == "takentime"
     val simVersion = Similar.version
+    val simLevel = Settings.similarLevel
     val wide = LocalConfiguration.current.screenWidthDp >= 600
     val cols = Settings.columns + if (wide) 2 else 0
 
-    LaunchedEffect(stack) { if (stack) vm.ensureSimilar() }
+    LaunchedEffect(stack, simLevel) { if (stack) vm.ensureSimilar() }
 
-    val rows = remember(vm.items.size, grouping, stack, if (stack) simVersion else 0) {
+    val rows = remember(vm.items.size, grouping, stack, if (stack) simVersion else 0, simLevel) {
         val list = vm.items.toList()
         buildRows(list, grouping, if (stack) Similar.groups(list) else null)
     }
@@ -265,6 +283,7 @@ fun GalleryGrid(
 
     var albumDialog by remember { mutableStateOf<List<Long>?>(null) }
     var tagDialog by remember { mutableStateOf<List<Long>?>(null) }
+    var removeAsk by remember { mutableStateOf<List<Long>?>(null) }
 
     fun membersOf(r: CellRow): List<Item> = r.members.mapNotNull { vm.items.getOrNull(it) }
 
@@ -297,12 +316,16 @@ fun GalleryGrid(
                 contentType = { if (rows[it] is HeaderRow) 0 else 1 },
             ) { i ->
                 when (val r = rows[i]) {
-                    is HeaderRow -> Text(
-                        r.label,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(start = 12.dp, top = 14.dp, bottom = 6.dp),
-                    )
+                    is HeaderRow -> Row(
+                        Modifier.padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 6.dp),
+                        verticalAlignment = Alignment.Bottom,
+                    ) {
+                        Text(r.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(
+                            "${r.count}장", color = Color.Gray, style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.padding(start = 8.dp, bottom = 2.dp),
+                        )
+                    }
                     is CellRow -> {
                         val item = vm.items.getOrNull(r.index) ?: return@items
                         val memberIds = r.members.mapNotNull { vm.items.getOrNull(it)?.id }
@@ -371,33 +394,46 @@ fun GalleryGrid(
                     ActionButton(Icons.Filled.LibraryAdd, "앨범") { albumDialog = ids }
                     ActionButton(Icons.AutoMirrored.Filled.Label, "태그") { tagDialog = ids }
                     when (source) {
-                        is AlbumSource -> ActionButton(Icons.Filled.RemoveCircleOutline, "빼기") {
-                            scope.launch {
-                                try {
-                                    Syno.removeFromAlbum(source.id, ids)
-                                    vm.removeIds(ids)
-                                    toast(ctx, "앨범에서 ${ids.size}장을 뺐어요")
-                                } catch (e: Exception) {
-                                    toast(ctx, e.message ?: "실패했어요")
-                                }
-                            }
-                        }
-                        is TagSource -> ActionButton(Icons.Filled.RemoveCircleOutline, "태그 빼기") {
-                            scope.launch {
-                                try {
-                                    Syno.removeTags(ids, listOf(source.id))
-                                    vm.removeIds(ids)
-                                    toast(ctx, "${ids.size}장에서 태그를 뺐어요")
-                                } catch (e: Exception) {
-                                    toast(ctx, e.message ?: "실패했어요")
-                                }
-                            }
-                        }
+                        is AlbumSource -> ActionButton(Icons.Filled.RemoveCircleOutline, "빼기") { removeAsk = ids }
+                        is TagSource -> ActionButton(Icons.Filled.RemoveCircleOutline, "태그 빼기") { removeAsk = ids }
                         else -> {}
                     }
                 }
             }
         }
+    }
+
+    removeAsk?.let { ids ->
+        ConfirmDialog(
+            title = if (source is AlbumSource) "앨범에서 빼기" else "태그 빼기",
+            text = "${ids.size}장을 ${if (source is AlbumSource) "이 앨범에서" else "이 태그에서"} 뺄까요? 사진 자체는 지워지지 않아요.",
+            confirm = "빼기",
+            onDismiss = { removeAsk = null },
+            onConfirm = {
+                removeAsk = null
+                when (source) {
+                    is AlbumSource -> scope.launch {
+                        try {
+                            Syno.removeFromAlbum(source.id, ids)
+                            vm.removeIds(ids)
+                            toast(ctx, "앨범에서 ${ids.size}장을 뺐어요")
+                        } catch (e: Exception) {
+                            toast(ctx, e.message ?: "실패했어요")
+                        }
+                    }
+                    is TagSource -> scope.launch {
+                        try {
+                            Syno.removeTags(ids, listOf(source.id))
+                            vm.removeIds(ids)
+                            toast(ctx, "${ids.size}장에서 태그를 뺐어요")
+                        } catch (e: Exception) {
+                            toast(ctx, e.message ?: "실패했어요")
+                        }
+                    }
+                    else -> {}
+                }
+            },
+        )
     }
 
     albumDialog?.let { ids ->
@@ -552,6 +588,20 @@ fun Thumb(
                     Text(formatDuration(item.duration), color = Color.White, style = MaterialTheme.typography.labelSmall)
                 }
             }
+        }
+        if (Settings.showTags && item.tags.isNotEmpty()) {
+            Text(
+                "#" + item.tags.first() + if (item.tags.size > 1) " +${item.tags.size - 1}" else "",
+                color = Color.White,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 3.dp, end = if (item.isVideo) 48.dp else 3.dp, bottom = if (Settings.showFilename) 20.dp else 3.dp)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.85f), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 5.dp, vertical = 1.dp),
+            )
         }
         if (Settings.showFilename) {
             Text(

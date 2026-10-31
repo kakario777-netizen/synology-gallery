@@ -282,7 +282,7 @@ object Syno {
 
     // ───────────────── 목록 ─────────────────
 
-    private val itemExtras = JSONArray(listOf("thumbnail", "resolution", "video_meta")).toString()
+    private val itemExtras = JSONArray(listOf("thumbnail", "resolution", "video_meta", "tag")).toString()
 
     suspend fun listItems(source: Source, offset: Int, limit: Int): List<Item> = call {
         val p = mutableMapOf(
@@ -332,6 +332,9 @@ object Syno {
             thumbUnitId = th?.optLong("unit_id", id) ?: id,
             hasXl = th?.optString("xl") == "ready",
             duration = vm?.optLong("duration") ?: 0L,
+            tags = add?.optJSONArray("tag")?.let { a ->
+                (0 until a.length()).mapNotNull { a.optJSONObject(it)?.optString("name")?.takeIf { n -> n.isNotEmpty() } }
+            } ?: emptyList(),
         )
     }
 

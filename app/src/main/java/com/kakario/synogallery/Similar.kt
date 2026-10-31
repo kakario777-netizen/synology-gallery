@@ -24,13 +24,20 @@ import kotlin.math.abs
 
 /**
  * 비슷한 사진 묶기 (구글 포토의 '비슷한 사진' 쌓기와 비슷한 기준).
- * - 촬영 시각이 가까운(앞뒤 사진 간 90초 이내) 사진들 중에서
+ * - 촬영 시각이 가까운(단계에 따라 45초~30분) 사진들 중에서
  * - 작은 썸네일의 모양(dHash)이 거의 같으면 한 묶음.
  * 계산은 전부 폰에서 하고, 결과는 폰에 저장해 다음부터 바로 쓴다.
  */
 object Similar {
-    private const val TIME_GAP_SEC = 90L
-    private const val MAX_DISTANCE = 12   // 64비트 중 다른 비트 수
+    /** 단계별 기준: (앞뒤 사진 시간 간격 초, 허용하는 모양 차이 / 64) */
+    private fun level() = when (Settings.similarLevel) {
+        1 -> 45L to 9
+        2 -> 180L to 14
+        4 -> 1800L to 24
+        else -> 600L to 19
+    }
+    private val TIME_GAP_SEC get() = level().first
+    private val MAX_DISTANCE get() = level().second
 
     private lateinit var ctx: Context
     private lateinit var file: File

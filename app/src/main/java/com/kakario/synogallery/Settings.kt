@@ -33,6 +33,29 @@ object Settings {
     var squareThumbs by P("squareThumbs", true)
     var groupSimilar by P("groupSimilar", false)
     var startTab by P("startTab", 0)               // 0 사진 / 1 앨범 / 2 태그 / 3 폴더
+    var tabOrder by P("tabOrder", "0,1,2,3")       // 탭 순서
+    var hiddenTabs by P("hiddenTabs", "")          // 숨긴 탭
+    var showTags by P("showTags", false)
+    var similarLevel by P("similarLevel", 3)       // 1 엄격 ~ 4 아주 넓게
+    var accent by P("accent", "red")
+
+    // 잠금
+    var lockPattern by P("lockPattern", "")        // 패턴 해시 (비어 있으면 잠금 꺼짐)
+    var lockBiometric by P("lockBiometric", true)
+    var lockDelaySec by P("lockDelaySec", 0)
+
+    /** 보이는 탭 (순서대로) */
+    fun visibleTabs(): List<Int> {
+        val hidden = hiddenTabs.split(',').mapNotNull { it.toIntOrNull() }.toSet()
+        val order = tabOrder.split(',').mapNotNull { it.toIntOrNull() }.filter { it in 0..3 }.distinct()
+        val full = order + (0..3).filter { it !in order }
+        return full.filter { it !in hidden }.ifEmpty { listOf(0) }
+    }
+
+    fun orderedTabs(): List<Int> {
+        val order = tabOrder.split(',').mapNotNull { it.toIntOrNull() }.filter { it in 0..3 }.distinct()
+        return order + (0..3).filter { it !in order }
+    }
 
     // 정렬·필터
     var sortBy by P("sortBy", "takentime")        // takentime / filename

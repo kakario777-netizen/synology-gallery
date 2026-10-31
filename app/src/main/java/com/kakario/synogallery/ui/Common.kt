@@ -80,6 +80,8 @@ private val monthFmt = SimpleDateFormat("yyyy년 M월", Locale.KOREA)
 private val dayFmt = SimpleDateFormat("yyyy년 M월 d일 (E)", Locale.KOREA)
 private val fullFmt = SimpleDateFormat("yyyy.MM.dd (E) a h:mm", Locale.KOREA)
 
+private val yearFmt = SimpleDateFormat("yyyy년", Locale.KOREA)
+fun yearLabel(sec: Long): String = yearFmt.format(Date(sec * 1000))
 fun monthLabel(sec: Long): String = monthFmt.format(Date(sec * 1000))
 fun dayLabel(sec: Long): String = dayFmt.format(Date(sec * 1000))
 fun fullDate(sec: Long): String = fullFmt.format(Date(sec * 1000))
