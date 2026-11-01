@@ -299,7 +299,7 @@ object Syno {
             is AlbumSource -> p["album_id"] = "${source.id}"
             is FolderSource -> p["folder_id"] = "${source.id}"
             is TagSource -> p["general_tag_id"] = "${source.id}"
-            AllSource -> {}
+            AllSource, FavSource -> {}
         }
         val filter = Settings.mediaFilter
         val data = if (filter != "all") {

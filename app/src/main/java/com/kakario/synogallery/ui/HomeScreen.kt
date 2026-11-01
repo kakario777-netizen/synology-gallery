@@ -276,8 +276,8 @@ private fun CoverGrid(
             }
             items(l, key = { it.id }) { c ->
                 CoverCardView(
-                    albumCounts = albumCounts,
                     c, team,
+                    albumCounts = albumCounts,
                     onClick = { onOpen(c) },
                     onRename = { edit = RenameTarget(c) },
                     onDelete = { edit = DeleteTarget(c) },
