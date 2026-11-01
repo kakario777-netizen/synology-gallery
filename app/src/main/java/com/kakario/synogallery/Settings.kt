@@ -40,6 +40,8 @@ object Settings {
     var accent by P("accent", "red")
     var bgTheme by P("bgTheme", "white")          // white / ivory / gray / dark
     var inlineVideo by P("inlineVideo", false)    // 뷰어에서 영상 바로 재생
+    var allVideosAlbum by P("allVideosAlbum", true) // 앨범 탭 맨 앞 '모든 동영상'
+    var videoSort by P("videoSort", "date_desc")  // date_desc / date_asc / name / size / length
 
     // 잠금
     var lockPattern by P("lockPattern", "")        // 패턴 해시 (비어 있으면 잠금 꺼짐)

@@ -14,6 +14,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,6 +42,7 @@ import com.kakario.synogallery.ui.PlayerScreen
 import com.kakario.synogallery.ui.SettingsScreen
 import com.kakario.synogallery.ui.TagDetailScreen
 import com.kakario.synogallery.ui.ViewerScreen
+import com.kakario.synogallery.ui.VideosScreen
 
 class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -47,7 +52,7 @@ class MainActivity : FragmentActivity() {
             navigationBarStyle = SystemBarStyle.light(android.graphics.Color.WHITE, android.graphics.Color.WHITE),
         )
         setContent {
-            val accent = accentColor(Settings.accent)
+            val accent = readableAccent(accentColor(Settings.accent), Palette.dark)
             val bg = Palette.bg
             val fg = Palette.fg
             val dark = Palette.dark
@@ -103,6 +108,27 @@ class MainActivity : FragmentActivity() {
     }
 }
 
+/** 배경과 너무 비슷한 강조색은 밝기를 조정해서 글자·버튼이 잘 보이게 */
+fun readableAccent(c: Color, darkBg: Boolean): Color {
+    val l = c.luminance()
+    return when {
+        darkBg && l < 0.18f -> androidx.compose.ui.graphics.lerp(c, Color.White, 0.72f)
+        !darkBg && l > 0.6f -> androidx.compose.ui.graphics.lerp(c, Color.Black, 0.35f)
+        else -> c
+    }
+}
+
+/** 상태바(시계)와 아래 내비게이션 바를 남겨두고 그 사이에만 화면을 그림 */
+@Composable
+fun Framed(content: @Composable () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Palette.bg)
+            .windowInsetsPadding(WindowInsets.systemBars)
+    ) { content() }
+}
+
 /** 강조색 목록 (설정 화면과 같이 씀) */
 val ACCENTS = listOf(
     "red" to "빨강", "black" to "검정", "blue" to "파랑", "green" to "초록",
@@ -145,32 +171,42 @@ fun AppNav() {
 
     NavHost(navController = nav, startDestination = s) {
         composable("login") {
-            LoginScreen(onDone = {
-                nav.navigate("home") { popUpTo("login") { inclusive = true } }
-            })
+            Framed {
+                LoginScreen(onDone = {
+                    nav.navigate("home") { popUpTo("login") { inclusive = true } }
+                })
+            }
         }
-        composable("home") { HomeScreen(nav) }
+        composable("home") { Framed { HomeScreen(nav) } }
         composable("album/{id}/{title}") { e ->
-            AlbumDetailScreen(
-                id = e.arguments?.getString("id")?.toLongOrNull() ?: 0L,
-                title = Uri.decode(e.arguments?.getString("title").orEmpty()),
-                nav = nav,
-            )
+            Framed {
+                AlbumDetailScreen(
+                    id = e.arguments?.getString("id")?.toLongOrNull() ?: 0L,
+                    title = Uri.decode(e.arguments?.getString("title").orEmpty()),
+                    nav = nav,
+                )
+            }
         }
+        composable("videos") { Framed { VideosScreen(nav) } }
         composable("tag/{id}/{title}") { e ->
-            TagDetailScreen(
-                id = e.arguments?.getString("id")?.toLongOrNull() ?: 0L,
-                title = Uri.decode(e.arguments?.getString("title").orEmpty()),
-                nav = nav,
-            )
+            Framed {
+                TagDetailScreen(
+                    id = e.arguments?.getString("id")?.toLongOrNull() ?: 0L,
+                    title = Uri.decode(e.arguments?.getString("title").orEmpty()),
+                    nav = nav,
+                )
+            }
         }
         composable("folder/{id}/{title}") { e ->
-            FolderDetailScreen(
-                id = e.arguments?.getString("id")?.toLongOrNull() ?: 0L,
-                title = Uri.decode(e.arguments?.getString("title").orEmpty()),
-                nav = nav,
-            )
+            Framed {
+                FolderDetailScreen(
+                    id = e.arguments?.getString("id")?.toLongOrNull() ?: 0L,
+                    title = Uri.decode(e.arguments?.getString("title").orEmpty()),
+                    nav = nav,
+                )
+            }
         }
+        // 사진·영상 보기만 진짜 전체 화면
         composable("viewer/{index}") { e ->
             ViewerScreen(start = e.arguments?.getString("index")?.toIntOrNull() ?: 0, nav = nav)
         }
@@ -178,11 +214,13 @@ fun AppNav() {
             PlayerScreen(index = e.arguments?.getString("index")?.toIntOrNull() ?: 0, nav = nav)
         }
         composable("settings") {
-            SettingsScreen(nav = nav, onLogout = {
-                Syno.logout()
-                Settings.password = ""
-                nav.navigate("login") { popUpTo(nav.graph.id) { inclusive = true } }
-            })
+            Framed {
+                SettingsScreen(nav = nav, onLogout = {
+                    Syno.logout()
+                    Settings.password = ""
+                    nav.navigate("login") { popUpTo(nav.graph.id) { inclusive = true } }
+                })
+            }
         }
     }
 }

@@ -13,6 +13,17 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import kotlinx.coroutines.launch
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -74,7 +85,8 @@ import me.saket.telephoto.zoomable.coil.ZoomableAsyncImage
 
 @Composable
 fun ViewerScreen(start: Int, nav: NavController) {
-    val items = ViewerStore.items
+    val stacks = ViewerStore.stacks
+    val items = stacks
     if (items.isEmpty()) {
         LaunchedEffect(Unit) { nav.popBackStack() }
         return
@@ -87,6 +99,17 @@ fun ViewerScreen(start: Int, nav: NavController) {
     var tagsVersion by remember { mutableIntStateOf(0) }
     val pos = remember { Animatable(0f) }   // 0 = 기본, 음수 = 위로(상세), 양수 = 아래로(닫기)
     val scope = rememberCoroutineScope()
+    // 묶음마다 지금 보고 있는 사진 번호
+    val chosen = remember { mutableStateMapOf<Int, Int>() }
+    var strip by remember { mutableStateOf(true) }
+    fun itemAt(page: Int): Item {
+        val st = stacks[page]
+        return st[(chosen[page] ?: 0).coerceIn(0, st.lastIndex)]
+    }
+    fun play(item: Item) {
+        ViewerStore.playItem = item
+        nav.navigate("player/0")
+    }
 
     KeepScreenOn(Settings.keepScreenOn || slideshow)
     SystemBars(ui, darkScreen = Settings.viewerBlack)
@@ -117,14 +140,21 @@ fun ViewerScreen(start: Int, nav: NavController) {
 
         BackHandler(enabled = up > 0f) { scope.launch { pos.animateTo(0f) } }
 
-        fun settle() {
+        val flingSpeed = with(density) { 900.dp.toPx() }
+        val tracker = remember { VelocityTracker() }
+
+        // 튕기듯 빠르게 밀면 거리가 짧아도 닫히거나(아래) 정보가 열림(위)
+        fun settle(velocity: Float) {
             scope.launch {
                 val v = pos.value
                 when {
-                    v > dismissAt -> nav.popBackStack()
-                    v > 0f -> pos.animateTo(0f)
-                    v < -panelH * 0.25f -> pos.animateTo(-panelH)
-                    else -> pos.animateTo(0f)
+                    v > dismissAt || (v > 0f && velocity > flingSpeed) -> {
+                        pos.animateTo(screenH, tween(160))
+                        nav.popBackStack()
+                    }
+                    v > 0f -> pos.animateTo(0f, spring(dampingRatio = 0.8f))
+                    v < -panelH * 0.25f || velocity < -flingSpeed -> pos.animateTo(-panelH, spring(dampingRatio = 0.85f))
+                    else -> pos.animateTo(0f, spring(dampingRatio = 0.85f))
                 }
             }
         }
@@ -135,10 +165,12 @@ fun ViewerScreen(start: Int, nav: NavController) {
                 .background(bg.copy(alpha = 1f - down * 0.85f))
                 .pointerInput(panelH) {
                     detectVerticalDragGestures(
-                        onDragEnd = { settle() },
-                        onDragCancel = { settle() },
+                        onDragStart = { tracker.resetTracking() },
+                        onDragEnd = { settle(tracker.calculateVelocity().y) },
+                        onDragCancel = { settle(0f) },
                     ) { change, dy ->
                         change.consume()
+                        tracker.addPosition(change.uptimeMillis, change.position)
                         scope.launch { pos.snapTo((pos.value + dy).coerceAtLeast(-panelH)) }
                     }
                 },
@@ -155,18 +187,18 @@ fun ViewerScreen(start: Int, nav: NavController) {
                         translationY = if (pos.value > 0f) pos.value else -panelH * 0.55f * up
                     },
             ) { page ->
-                val item = items[page]
+                val item = itemAt(page)
                 if (item.isVideo) {
-                    if (Settings.inlineVideo && page == pager.currentPage) {
+                    if (Settings.inlineVideo && page == pager.currentPage && down == 0f) {
                         // 구글 포토처럼 그 자리에서 바로 재생 (넘기면 멈춤)
                         InlineVideo(
                             item, uiVisible = ui,
                             onTap = { if (up > 0f) scope.launch { pos.animateTo(0f) } else ui = !ui },
-                            onFullscreen = { nav.navigate("player/$page") },
+                            onFullscreen = { play(item) },
                         )
                     } else {
                         VideoPoster(item, onTap = { ui = !ui }, onPlay = {
-                            if (Settings.inlineVideo) scope.launch { pager.animateScrollToPage(page) } else nav.navigate("player/$page")
+                            if (Settings.inlineVideo) scope.launch { pager.animateScrollToPage(page) } else play(item)
                         })
                     }
                 } else {
@@ -177,7 +209,33 @@ fun ViewerScreen(start: Int, nav: NavController) {
                 }
             }
 
-            val current = items[pager.currentPage]
+            val current = itemAt(pager.currentPage)
+            val curStack = stacks[pager.currentPage]
+
+            // 묶음 사진: 아래 띠에서 안쪽 사진 고르기 (구글 포토 방식)
+            if (curStack.size > 1 && up == 0f && down == 0f) {
+                Column(
+                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        "비슷한 사진 ${(chosen[pager.currentPage] ?: 0) + 1} / ${curStack.size}" + if (strip) "  ▾" else "  ▴",
+                        color = Color.White, style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier
+                            .padding(bottom = 6.dp)
+                            .background(Color(0x99000000), RoundedCornerShape(14.dp))
+                            .clickable { strip = !strip }
+                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                    )
+                    AnimatedVisibility(strip && ui) {
+                        StackStrip(
+                            stack = curStack,
+                            selected = chosen[pager.currentPage] ?: 0,
+                            onSelect = { chosen[pager.currentPage] = it },
+                        )
+                    }
+                }
+            }
 
             AnimatedVisibility(
                 ui && down == 0f, enter = fadeIn(), exit = fadeOut(),
@@ -255,6 +313,48 @@ fun ViewerScreen(start: Int, nav: NavController) {
         onTagClose = { tagEdit = null },
         onAlbumClose = { albumAdd = null },
     )
+}
+
+@Composable
+private fun StackStrip(stack: List<Item>, selected: Int, onSelect: (Int) -> Unit) {
+    val ctx = LocalContext.current
+    val listState = rememberLazyListState()
+    LaunchedEffect(stack) { listState.scrollToItem((selected - 2).coerceAtLeast(0)) }
+    LazyRow(
+        state = listState,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0x99000000))
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp),
+    ) {
+        itemsIndexed(stack, key = { _, it -> it.id }) { i, it ->
+            val key = Syno.thumbKey(it.thumbUnitId, it.cacheKey, "sm")
+            Box(
+                Modifier
+                    .size(if (i == selected) 64.dp else 54.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .border(
+                        if (i == selected) 2.5.dp else 0.dp,
+                        if (i == selected) Color.White else Color.Transparent,
+                        RoundedCornerShape(8.dp),
+                    )
+                    .clickable { onSelect(i) }
+            ) {
+                AsyncImage(
+                    model = remember(it.id) {
+                        ImageRequest.Builder(ctx)
+                            .data(Syno.thumbUrl(it.thumbUnitId, it.cacheKey, "sm"))
+                            .memoryCacheKey(key).diskCacheKey(key).build()
+                    },
+                    contentDescription = it.filename,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+    }
 }
 
 @Composable

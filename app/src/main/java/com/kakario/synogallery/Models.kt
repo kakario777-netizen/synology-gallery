@@ -53,6 +53,11 @@ data class FolderSource(val id: Long) : Source {
     override val key get() = "folder_$id"
 }
 
+/** 모든 동영상 */
+data object VideosSource : Source {
+    override val key = "videos"
+}
+
 data object FavSource : Source {
     override val key = "fav"
 }
@@ -63,7 +68,12 @@ data class TagSource(val id: Long) : Source {
 
 /** 뷰어로 넘겨줄 현재 목록 */
 object ViewerStore {
-    var items: List<Item> = emptyList()
+    /** 뷰어 한 장 = 묶음 하나 (묶이지 않은 사진은 1장짜리 묶음) */
+    var stacks: List<List<Item>> = emptyList()
+    val items: List<Item> get() = stacks.map { it.first() }
+
+    /** 전체 화면 플레이어로 넘길 영상 */
+    var playItem: Item? = null
     var lastIndex: Int = -1
     var sourceKey: String = ""
 }

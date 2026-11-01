@@ -104,6 +104,7 @@ import com.kakario.synogallery.Source
 import com.kakario.synogallery.Syno
 import com.kakario.synogallery.TagSource
 import com.kakario.synogallery.ViewerStore
+import com.kakario.synogallery.VideosSource
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -150,7 +151,7 @@ class GalleryViewModel(private val source: Source) : ViewModel() {
                     val page = Syno.listItems(source, rawOffset, PAGE)
                     rawOffset += page.size
                     items.addAll(
-                        when (Settings.mediaFilter) {
+                        when (if (source is VideosSource) "video" else Settings.mediaFilter) {
                             "photo" -> page.filter { !it.isVideo }
                             "video" -> page.filter { it.isVideo }
                             else -> page
@@ -182,6 +183,23 @@ class GalleryViewModel(private val source: Source) : ViewModel() {
                 Similar.compute(c)
             }
         }
+    }
+
+    var sortVersion by mutableStateOf(0)
+        private set
+
+    /** 모든 동영상 안에서 정렬 (이름·크기·길이·날짜) */
+    fun sortLocal(mode: String) {
+        val sorted = when (mode) {
+            "date_asc" -> items.sortedBy { it.time }
+            "name" -> items.sortedBy { it.filename.lowercase() }
+            "size" -> items.sortedByDescending { it.size }
+            "length" -> items.sortedByDescending { it.duration }
+            else -> items.sortedByDescending { it.time }
+        }
+        items.clear()
+        items.addAll(sorted)
+        sortVersion++
     }
 
     fun removeIds(ids: Collection<Long>) {
@@ -329,17 +347,20 @@ fun GalleryGrid(
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
     val density = LocalDensity.current
-    val grouping = Settings.grouping
-    val stack = Settings.groupSimilar && Settings.sortBy == "takentime"
+    val stack = Settings.groupSimilar && Settings.sortBy == "takentime" && source !is VideosSource
     val simVersion = Similar.version
     val simLevel = Settings.similarLevel
     val wide = LocalConfiguration.current.screenWidthDp >= 600
     val cols = Settings.columns + if (wide) 2 else 0
     val showTags = Settings.showTags && source !is TagSource
+    val videoSort = Settings.videoSort
+    val isVideos = source is VideosSource
+    val grouping = if (isVideos && !videoSort.startsWith("date")) "none" else Settings.grouping
+    LaunchedEffect(videoSort, vm.end, isVideos) { if (isVideos && vm.end) vm.sortLocal(videoSort) }
 
     LaunchedEffect(stack) { if (stack) vm.ensureSimilar() }
 
-    val rows = remember(vm.items.size, grouping, stack, if (stack) simVersion else 0, simLevel) {
+    val rows = remember(vm.items.size, vm.sortVersion, grouping, stack, if (stack) simVersion else 0, simLevel) {
         val list = vm.items.toList()
         buildRows(list, grouping, if (stack) Similar.groups(list) else null)
     }
@@ -352,7 +373,8 @@ fun GalleryGrid(
     LaunchedEffect(Unit) {
         val idx = ViewerStore.lastIndex
         if (idx >= 0 && ViewerStore.sourceKey == gKey) {
-            val row = currentRows.indexOfFirst { it is CellRow && idx in it.members }
+            var ord = -1
+            val row = currentRows.indexOfFirst { if (it is CellRow) ord++; it is CellRow && ord == idx }
             if (row >= 0 && state.layoutInfo.visibleItemsInfo.none { it.index == row }) state.scrollToItem(row)
             ViewerStore.lastIndex = -1
         }
@@ -490,15 +512,12 @@ fun GalleryGrid(
                                 if (selecting) {
                                     if (isSel) memberIds.forEach { vm.selected.remove(it) }
                                     else memberIds.forEach { vm.selected[it] = Unit }
-                                } else if (r.members.size > 1) {
-                                    // 묶음: 묶인 사진만 넘겨보기
-                                    ViewerStore.items = membersOf(r)
-                                    ViewerStore.sourceKey = ""
-                                    nav.navigate("viewer/0")
                                 } else {
-                                    ViewerStore.items = vm.items.toList()
+                                    // 구글 포토처럼: 묶음은 한 장처럼 넘어가고, 안쪽 사진은 아래 띠에서 고름
+                                    val cells = rows.filterIsInstance<CellRow>()
+                                    ViewerStore.stacks = cells.map { membersOf(it) }.filter { it.isNotEmpty() }
                                     ViewerStore.sourceKey = gKey
-                                    nav.navigate("viewer/${r.index}")
+                                    nav.navigate("viewer/${cells.indexOf(r).coerceAtLeast(0)}")
                                 }
                             },
                         )
@@ -515,6 +534,7 @@ fun GalleryGrid(
                     vm.end && vm.items.isEmpty() -> MessageBox(
                         if (source is FavSource) "즐겨찾기가 없어요.\n사진을 길게 눌러 고른 뒤 ♡를 누르면 여기에 모여요." else "사진이 없어요."
                     )
+                    source is FavSource -> Box(Modifier.padding(bottom = 90.dp))
                     else -> Text(
                         if (vm.loading) "${vm.items.size}개 불러오는 중…" else "${vm.items.size}개",
                         color = Palette.sub,

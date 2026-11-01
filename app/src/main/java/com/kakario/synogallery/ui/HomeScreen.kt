@@ -28,6 +28,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
@@ -240,6 +242,7 @@ private fun CoverGrid(
     deleteText: (CoverCard) -> String,
     topAction: (@Composable (reload: () -> Unit) -> Unit)? = null,
     albumCounts: Boolean = false,
+    leading: (@Composable () -> Unit)? = null,
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -271,7 +274,10 @@ private fun CoverGrid(
             if (topAction != null) {
                 item(span = { GridItemSpan(maxLineSpan) }) { topAction { reload++ } }
             }
-            if (l.isEmpty()) {
+            if (leading != null) {
+                item(key = "leading") { leading() }
+            }
+            if (l.isEmpty() && leading == null) {
                 item(span = { GridItemSpan(maxLineSpan) }) { MessageBox(emptyText) }
             }
             items(l, key = { it.id }) { c ->
@@ -342,6 +348,7 @@ fun AlbumsTab(nav: NavController) {
         delete = { c -> Syno.deleteAlbum(c.id) },
         deleteText = { "앨범만 지워지고 사진은 그대로 남아요." },
         albumCounts = true,
+        leading = if (Settings.allVideosAlbum) ({ AllVideosCard { nav.navigate("videos") } }) else null,
         topAction = { reload ->
             Row(
                 Modifier.fillMaxWidth().clickable { creating = reload }.padding(vertical = 4.dp),
@@ -578,5 +585,113 @@ fun FolderDetailScreen(id: Long, title: String, nav: NavController) {
         },
     ) { pad ->
         FolderContent(folderId = id, nav = nav, modifier = Modifier.padding(pad))
+    }
+}
+
+
+// ───────────────── 모든 동영상 ─────────────────
+
+private object AllVideosInfo {
+    var cover: com.kakario.synogallery.Item? = null
+    var count: Int = -1
+}
+
+/** 앨범 탭 맨 앞 '모든 동영상' 카드 */
+@Composable
+private fun AllVideosCard(onClick: () -> Unit) {
+    val ctx = LocalContext.current
+    var cover by remember { mutableStateOf(AllVideosInfo.cover) }
+    var count by remember { mutableIntStateOf(AllVideosInfo.count) }
+    LaunchedEffect(Unit) {
+        try {
+            val first = Syno.listItems(com.kakario.synogallery.VideosSource, 0, 1).firstOrNull()
+            cover = first
+            AllVideosInfo.cover = first
+            val n = try {
+                Syno.countVideos()
+            } catch (_: Exception) {
+                -1
+            }
+            count = n
+            AllVideosInfo.count = n
+        } catch (_: Exception) {
+        }
+    }
+    Column(Modifier.clickable(onClick = onClick)) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(16.dp))
+                .background(com.kakario.synogallery.Palette.placeholder)
+        ) {
+            cover?.let { c ->
+                val key = Syno.thumbKey(c.thumbUnitId, c.cacheKey, "m")
+                AsyncImage(
+                    model = remember(c.id) {
+                        ImageRequest.Builder(ctx)
+                            .data(Syno.thumbUrl(c.thumbUnitId, c.cacheKey, "m"))
+                            .memoryCacheKey(key).diskCacheKey(key).build()
+                    },
+                    contentDescription = "모든 동영상",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            Icon(
+                Icons.Filled.PlayCircle, null, tint = Color.White,
+                modifier = Modifier.align(Alignment.Center).size(44.dp),
+            )
+        }
+        Text(
+            "모든 동영상", style = MaterialTheme.typography.bodyLarge,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+        Text(
+            if (count >= 0) "동영상 $count" else "동영상",
+            color = com.kakario.synogallery.Palette.sub, style = MaterialTheme.typography.labelMedium,
+        )
+    }
+}
+
+private val VIDEO_SORTS = listOf(
+    "date_desc" to "최신순", "date_asc" to "오래된순", "name" to "이름순", "size" to "큰 파일순", "length" to "긴 영상순",
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun VideosScreen(nav: NavController) {
+    var menu by remember { mutableStateOf(false) }
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("모든 동영상") },
+                navigationIcon = {
+                    IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "뒤로") }
+                },
+                actions = {
+                    Box {
+                        TextButton(onClick = { menu = true }) {
+                            Icon(Icons.AutoMirrored.Filled.Sort, null, modifier = Modifier.size(18.dp))
+                            Text(
+                                VIDEO_SORTS.firstOrNull { it.first == Settings.videoSort }?.second ?: "정렬",
+                                modifier = Modifier.padding(start = 4.dp),
+                            )
+                        }
+                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            VIDEO_SORTS.forEach { (k, label) ->
+                                DropdownMenuItem(
+                                    text = { Text(label + if (k == Settings.videoSort) "  ✓" else "") },
+                                    onClick = { Settings.videoSort = k; menu = false },
+                                )
+                            }
+                        }
+                    }
+                },
+            )
+        },
+    ) { pad ->
+        GalleryGrid(com.kakario.synogallery.VideosSource, nav, Modifier.padding(pad))
     }
 }

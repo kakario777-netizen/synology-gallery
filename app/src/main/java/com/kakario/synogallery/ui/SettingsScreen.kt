@@ -109,6 +109,13 @@ fun SettingsScreen(nav: NavController, onLogout: () -> Unit) {
                 ) { Settings.startTab = it }
             }
             item { TabManager() }
+            item {
+                Toggle(
+                    "앨범 탭에 '모든 동영상' 앨범",
+                    "앨범 탭 맨 앞에 모든 동영상을 모아 보는 앨범을 보여줘요",
+                    Settings.allVideosAlbum,
+                ) { Settings.allVideosAlbum = it }
+            }
 
             // ─── 보기 ───
             item { Section("사진 목록") }

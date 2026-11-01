@@ -103,7 +103,7 @@ fun newPlayer(ctx: Context, item: Item): ExoPlayer =
 fun VideoSurface(player: ExoPlayer, modifier: Modifier = Modifier) {
     AndroidView(
         factory = { c ->
-            PlayerView(c).apply {
+            (android.view.LayoutInflater.from(c).inflate(com.kakario.synogallery.R.layout.texture_player, null) as PlayerView).apply {
                 useController = false
                 this.player = player
                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
@@ -112,6 +112,7 @@ fun VideoSurface(player: ExoPlayer, modifier: Modifier = Modifier) {
             }
         },
         update = { it.player = player },
+        onRelease = { it.player = null },
         modifier = modifier,
     )
 }
@@ -169,8 +170,7 @@ private fun SeekBar(player: ExoPlayer, st: PlayState, modifier: Modifier = Modif
 @OptIn(UnstableApi::class)
 @Composable
 fun PlayerScreen(index: Int, nav: NavController) {
-    val items = ViewerStore.items
-    val item = items.getOrNull(index)
+    val item = ViewerStore.playItem ?: ViewerStore.items.getOrNull(index)
     if (item == null) {
         LaunchedEffect(Unit) { nav.popBackStack() }
         return

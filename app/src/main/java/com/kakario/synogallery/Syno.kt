@@ -299,9 +299,9 @@ object Syno {
             is AlbumSource -> p["album_id"] = "${source.id}"
             is FolderSource -> p["folder_id"] = "${source.id}"
             is TagSource -> p["general_tag_id"] = "${source.id}"
-            AllSource, FavSource -> {}
+            AllSource, FavSource, VideosSource -> {}
         }
-        val filter = Settings.mediaFilter
+        val filter = if (source is VideosSource) "video" else Settings.mediaFilter
         val data = if (filter != "all") {
             try {
                 post(base, p + ("type" to q(filter)))
@@ -515,6 +515,17 @@ object Syno {
             )
         )
         Unit
+    }
+
+    /** 전체 동영상 개수 */
+    suspend fun countVideos(): Int = call {
+        val data = post(
+            base, mapOf(
+                "api" to "$prefix.Browse.Item", "version" to "1", "method" to "count",
+                "type" to q("video"),
+            )
+        )
+        data.optInt("count")
     }
 
     /** 앨범 안 종류별 개수 (type: photo / video) */
