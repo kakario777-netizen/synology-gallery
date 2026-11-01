@@ -14,6 +14,7 @@ class App : Application(), ImageLoaderFactory {
         Settings.init(this)
         Syno.init()
         Similar.init(this)
+        Favorites.init(this)
     }
 
     override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)

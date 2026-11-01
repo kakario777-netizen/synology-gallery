@@ -53,6 +53,10 @@ data class FolderSource(val id: Long) : Source {
     override val key get() = "folder_$id"
 }
 
+data object FavSource : Source {
+    override val key = "fav"
+}
+
 data class TagSource(val id: Long) : Source {
     override val key get() = "tag_$id"
 }

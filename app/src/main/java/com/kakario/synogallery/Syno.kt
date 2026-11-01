@@ -517,6 +517,17 @@ object Syno {
         Unit
     }
 
+    /** 앨범 안 종류별 개수 (type: photo / video) */
+    suspend fun countInAlbum(albumId: Long, type: String): Int = call {
+        val data = post(
+            base, mapOf(
+                "api" to "SYNO.Foto.Browse.Item", "version" to "1", "method" to "count",
+                "album_id" to "$albumId", "type" to q(type),
+            )
+        )
+        data.optInt("count")
+    }
+
     suspend fun renameAlbum(albumId: Long, name: String) = call {
         post(
             base, mapOf(

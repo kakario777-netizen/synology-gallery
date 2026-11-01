@@ -34,6 +34,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.LibraryAdd
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Pause
@@ -155,7 +157,18 @@ fun ViewerScreen(start: Int, nav: NavController) {
             ) { page ->
                 val item = items[page]
                 if (item.isVideo) {
-                    VideoPoster(item, onTap = { ui = !ui }, onPlay = { nav.navigate("player/$page") })
+                    if (Settings.inlineVideo && page == pager.currentPage) {
+                        // 구글 포토처럼 그 자리에서 바로 재생 (넘기면 멈춤)
+                        InlineVideo(
+                            item, uiVisible = ui,
+                            onTap = { if (up > 0f) scope.launch { pos.animateTo(0f) } else ui = !ui },
+                            onFullscreen = { nav.navigate("player/$page") },
+                        )
+                    } else {
+                        VideoPoster(item, onTap = { ui = !ui }, onPlay = {
+                            if (Settings.inlineVideo) scope.launch { pager.animateScrollToPage(page) } else nav.navigate("player/$page")
+                        })
+                    }
                 } else {
                     PhotoPage(item, onTap = {
                         if (up > 0f) scope.launch { pos.animateTo(0f) } else ui = !ui
@@ -191,6 +204,13 @@ fun ViewerScreen(start: Int, nav: NavController) {
                             color = Color(0xFFCCCCCC), style = MaterialTheme.typography.labelSmall,
                         )
                     }
+                    val fav = com.kakario.synogallery.Favorites.version.let { com.kakario.synogallery.Favorites.isFav(current.id) }
+                    IconButton(onClick = { com.kakario.synogallery.Favorites.toggle(current) }) {
+                        Icon(
+                            if (fav) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder, "즐겨찾기",
+                            tint = if (fav) MaterialTheme.colorScheme.primary else Color.White,
+                        )
+                    }
                     IconButton(onClick = { slideshow = !slideshow }) {
                         Icon(if (slideshow) Icons.Filled.Pause else Icons.Filled.Slideshow, "슬라이드쇼", tint = Color.White)
                     }
@@ -216,7 +236,7 @@ fun ViewerScreen(start: Int, nav: NavController) {
                         .fillMaxWidth()
                         .height(with(density) { panelH.toDp() })
                         .graphicsLayer { translationY = panelH * (1f - up) }
-                        .background(Color.White, RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)),
+                        .background(com.kakario.synogallery.Palette.card, RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)),
                 ) {
                     DetailsPanel(
                         item = current,
@@ -277,7 +297,7 @@ private fun DetailsPanel(item: Item, tagsVersion: Int, onTag: () -> Unit, onAlbu
         )
         Text(
             fullDate(item.time), style = MaterialTheme.typography.titleMedium,
-            color = Color(0xFF1B1B1F), modifier = Modifier.padding(top = 14.dp, bottom = 10.dp),
+            color = com.kakario.synogallery.Palette.fg, modifier = Modifier.padding(top = 14.dp, bottom = 10.dp),
         )
         InfoLine("파일명", item.filename)
         if (item.width > 0) InfoLine("해상도", "${item.width} × ${item.height}")
@@ -313,7 +333,7 @@ private fun DetailsPanel(item: Item, tagsVersion: Int, onTag: () -> Unit, onAlbu
 private fun InfoLine(k: String, v: String) {
     Row(Modifier.padding(vertical = 3.dp)) {
         Text(k, color = Color.Gray, modifier = Modifier.width(72.dp), style = MaterialTheme.typography.bodyMedium)
-        Text(v, color = Color(0xFF1B1B1F), style = MaterialTheme.typography.bodyMedium)
+        Text(v, color = com.kakario.synogallery.Palette.fg, style = MaterialTheme.typography.bodyMedium)
     }
 }
 

@@ -72,7 +72,7 @@ import com.kakario.synogallery.Syno
 import com.kakario.synogallery.TagSource
 import kotlinx.coroutines.launch
 
-val HOME_TABS = listOf("사진", "앨범", "태그", "폴더")
+val HOME_TABS = listOf("사진", "앨범", "태그", "폴더", "즐겨찾기")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -104,11 +104,11 @@ fun HomeScreen(nav: NavController) {
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
             if (tabs.size > 1) {
-                androidx.compose.material3.TabRow(selectedTabIndex = pager.currentPage.coerceIn(0, tabs.lastIndex), containerColor = Color.White) {
+                androidx.compose.material3.TabRow(selectedTabIndex = pager.currentPage.coerceIn(0, tabs.lastIndex), containerColor = com.kakario.synogallery.Palette.bg) {
                     tabs.forEachIndexed { i, t ->
                         Tab(
                             selected = pager.currentPage == i,
-                            onClick = { scope.launch { pager.animateScrollToPage(i) } },
+                            onClick = { if (!SelectionMode.active) scope.launch { pager.animateScrollToPage(i) } },
                             text = { Text(HOME_TABS[t]) },
                         )
                     }
@@ -119,11 +119,14 @@ fun HomeScreen(nav: NavController) {
                 state = pager,
                 modifier = Modifier.fillMaxSize(),
                 key = { tabs[it] },
+                // 여러 장 고르는 중에는 좌우로 넘어가지 않게
+                userScrollEnabled = !SelectionMode.active,
             ) { page ->
                 when (tabs[page]) {
                     0 -> GalleryGrid(AllSource, nav)
                     1 -> AlbumsTab(nav)
                     2 -> TagsTab(nav)
+                    4 -> GalleryGrid(com.kakario.synogallery.FavSource, nav)
                     else -> FolderContent(folderId = null, nav = nav)
                 }
             }
@@ -150,16 +153,30 @@ private fun CoverCardView(
     onClick: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
+    albumCounts: Boolean = false,
 ) {
     val ctx = LocalContext.current
     var menu by remember { mutableStateOf(false) }
+    // 앨범: 사진 몇 장 · 동영상 몇 개 (갤럭시 갤러리처럼)
+    var counts by remember(c.id) { mutableStateOf(AlbumCounts.cache[c.id]) }
+    if (albumCounts) LaunchedEffect(c.id, c.count) {
+        if (counts == null || counts!!.first + counts!!.second != c.count) {
+            try {
+                val v = Syno.countInAlbum(c.id, "video")
+                val p = (c.count - v).coerceAtLeast(0)
+                counts = p to v
+                AlbumCounts.cache[c.id] = p to v
+            } catch (_: Exception) {
+            }
+        }
+    }
     Column(Modifier.combinedClickable(onClick = onClick, onLongClick = { menu = true })) {
         Box(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color(0xFFEFEFF2))
+                .clip(RoundedCornerShape(16.dp))
+                .background(com.kakario.synogallery.Palette.placeholder)
         ) {
             if (c.unitId != 0L) {
                 val key = Syno.thumbKey(c.unitId, c.cacheKey, "m")
@@ -179,17 +196,29 @@ private fun CoverCardView(
                 DropdownMenuItem(text = { Text("삭제", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; onDelete() })
             }
         }
-        Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 c.name, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f),
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
             )
             IconButton(onClick = { menu = true }, modifier = Modifier.size(28.dp)) {
                 Icon(Icons.Filled.MoreVert, "메뉴", tint = Color.Gray, modifier = Modifier.size(18.dp))
             }
         }
-        Text("${c.count}개", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
+        val cnt = counts
+        val label = when {
+            !albumCounts || cnt == null -> "${c.count}개"
+            cnt.second == 0 -> "사진 ${cnt.first}"
+            cnt.first == 0 -> "동영상 ${cnt.second}"
+            else -> "사진 ${cnt.first} · 동영상 ${cnt.second}"
+        }
+        Text(label, color = com.kakario.synogallery.Palette.sub, style = MaterialTheme.typography.labelMedium)
     }
+}
+
+object AlbumCounts {
+    val cache = java.util.concurrent.ConcurrentHashMap<Long, Pair<Int, Int>>()
 }
 
 /** 이름 바꾸기·삭제 대화상자 상태 */
@@ -210,6 +239,7 @@ private fun CoverGrid(
     delete: suspend (CoverCard) -> Unit,
     deleteText: (CoverCard) -> String,
     topAction: (@Composable (reload: () -> Unit) -> Unit)? = null,
+    albumCounts: Boolean = false,
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -246,6 +276,7 @@ private fun CoverGrid(
             }
             items(l, key = { it.id }) { c ->
                 CoverCardView(
+                    albumCounts = albumCounts,
                     c, team,
                     onClick = { onOpen(c) },
                     onRename = { edit = RenameTarget(c) },
@@ -298,6 +329,9 @@ fun AlbumsTab(nav: NavController) {
         }
         return
     }
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var creating by remember { mutableStateOf<(() -> Unit)?>(null) }
     CoverGrid(
         load = { Syno.listAlbums().map { CoverCard(it.id, it.name, it.count, it.cacheKey, it.thumbUnitId) } },
         emptyText = "앨범이 없어요.\n사진을 길게 눌러 선택한 뒤 '앨범'으로 새 앨범을 만들 수 있어요.",
@@ -307,7 +341,34 @@ fun AlbumsTab(nav: NavController) {
         rename = { c, name -> Syno.renameAlbum(c.id, name) },
         delete = { c -> Syno.deleteAlbum(c.id) },
         deleteText = { "앨범만 지워지고 사진은 그대로 남아요." },
+        albumCounts = true,
+        topAction = { reload ->
+            Row(
+                Modifier.fillMaxWidth().clickable { creating = reload }.padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Filled.Add, null, tint = MaterialTheme.colorScheme.primary)
+                Text("새 앨범", color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 8.dp))
+            }
+        },
     )
+    creating?.let { reload ->
+        TextInputDialog(
+            title = "새 앨범", label = "앨범 이름", confirm = "만들기",
+            onConfirm = { n ->
+                creating = null
+                scope.launch {
+                    try {
+                        Syno.createAlbum(n, emptyList()); reload()
+                        toast(ctx, "'$n' 앨범을 만들었어요. 사진을 길게 눌러 넣을 수 있어요")
+                    } catch (e: Exception) {
+                        toast(ctx, e.message ?: "실패했어요")
+                    }
+                }
+            },
+            onDismiss = { creating = null },
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

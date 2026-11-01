@@ -41,6 +41,7 @@ object Similar {
 
     private lateinit var ctx: Context
     private lateinit var file: File
+    private lateinit var failFile: File
     private val hashes = ConcurrentHashMap<String, Long>()
     private val failed = ConcurrentHashMap.newKeySet<String>()
 
@@ -55,11 +56,14 @@ object Similar {
     fun init(c: Context) {
         ctx = c.applicationContext
         file = File(ctx.filesDir, "similar_hashes.txt")
+        failFile = File(ctx.filesDir, "similar_failed.txt")
         try {
             if (file.exists()) file.forEachLine { line ->
                 val i = line.indexOf(',')
-                if (i > 0) line.substring(i + 1).toLongOrNull()?.let { hashes[line.substring(0, i)] = it }
+                // 예전 형식(id_cacheKey)도 사진 id만 떼어서 그대로 씀
+                if (i > 0) line.substring(i + 1).toLongOrNull()?.let { hashes[line.substring(0, i).substringBefore('_')] = it }
             }
+            if (failFile.exists()) failFile.forEachLine { if (it.isNotBlank()) failed += it.trim() }
         } catch (_: Exception) {
         }
     }
@@ -69,6 +73,7 @@ object Similar {
         failed.clear()
         try {
             file.delete()
+            failFile.delete()
         } catch (_: Exception) {
         }
         version++
@@ -76,10 +81,13 @@ object Similar {
 
     val analyzedCount get() = hashes.size
 
-    private fun key(it: Item) = "${it.id}_${it.cacheKey}"
+    private fun key(it: Item) = "${it.id}"
 
-    private fun near(a: Item, b: Item) =
-        !a.isVideo && !b.isVideo && abs(a.time - b.time) <= TIME_GAP_SEC && sameShape(a, b)
+    private fun near(a: Item, b: Item, gap: Long = TIME_GAP_SEC) =
+        !a.isVideo && !b.isVideo && abs(a.time - b.time) <= gap && sameShape(a, b)
+
+    /** 가장 넓은 단계 기준으로 한 번만 분석 → 단계를 바꿔도 다시 분석하지 않음 */
+    private const val ANALYZE_GAP = 1800L
 
     private fun sameShape(a: Item, b: Item): Boolean {
         if (a.width <= 0 || a.height <= 0 || b.width <= 0 || b.height <= 0) return true
@@ -93,7 +101,8 @@ object Similar {
             val it = items[i]
             val k = key(it)
             if (hashes.containsKey(k) || failed.contains(k)) continue
-            val hasNeighbor = (i > 0 && near(items[i - 1], it)) || (i < items.lastIndex && near(it, items[i + 1]))
+            val hasNeighbor = (i > 0 && near(items[i - 1], it, ANALYZE_GAP)) ||
+                (i < items.lastIndex && near(it, items[i + 1], ANALYZE_GAP))
             if (hasNeighbor) out += it
         }
         return out
@@ -118,7 +127,13 @@ object Similar {
                             if (h != null) {
                                 hashes[k] = h
                                 synchronized(lines) { lines.append(k).append(',').append(h).append('\n') }
-                            } else failed += k
+                            } else {
+                                failed += k
+                                try {
+                                    synchronized(failFile) { failFile.appendText(k + "\n") }
+                                } catch (_: Exception) {
+                                }
+                            }
                         }
                     }
                 }.awaitAll()

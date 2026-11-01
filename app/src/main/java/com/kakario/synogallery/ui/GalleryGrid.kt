@@ -4,14 +4,14 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -38,6 +39,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FilterNone
 import androidx.compose.material.icons.filled.LibraryAdd
 import androidx.compose.material.icons.filled.PlayArrow
@@ -49,8 +52,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -63,14 +66,22 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -83,7 +94,10 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.kakario.synogallery.AlbumSource
+import com.kakario.synogallery.FavSource
+import com.kakario.synogallery.Favorites
 import com.kakario.synogallery.Item
+import com.kakario.synogallery.Palette
 import com.kakario.synogallery.Settings
 import com.kakario.synogallery.Similar
 import com.kakario.synogallery.Source
@@ -93,9 +107,15 @@ import com.kakario.synogallery.ViewerStore
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 private const val PAGE = 500
+
+/** 사진을 여러 장 고르는 중인지 (메인 화면 좌우 넘김을 막을 때 씀) */
+object SelectionMode {
+    var active by mutableStateOf(false)
+}
 
 class GalleryViewModel(private val source: Source) : ViewModel() {
     val items = mutableStateListOf<Item>()
@@ -112,7 +132,11 @@ class GalleryViewModel(private val source: Source) : ViewModel() {
     val selected = mutableStateMapOf<Long, Unit>()
 
     init {
-        loadAll()
+        if (source is FavSource) {
+            items.addAll(Favorites.list())
+            end = true
+            ensureSimilar()
+        } else loadAll()
     }
 
     /** 월별 이동 스크롤이 전체 기간을 다룰 수 있게 끝까지 이어서 불러옴 */
@@ -170,14 +194,24 @@ class GalleryViewModel(private val source: Source) : ViewModel() {
 private sealed interface GridRow {
     val key: String
     val month: String
+
+    /** 이 줄이 속한 날짜 구역 제목 */
+    val section: String
 }
 
 private data class HeaderRow(val label: String, override val month: String, val count: Int) : GridRow {
     override val key get() = "h_$label"
+    override val section get() = label
 }
 
 /** index: 대표 사진 위치, members: 묶인 사진 위치들 (묶음이 아니면 1개) */
-private data class CellRow(val index: Int, val id: Long, val members: List<Int>, override val month: String) : GridRow {
+private data class CellRow(
+    val index: Int,
+    val id: Long,
+    val members: List<Int>,
+    override val month: String,
+    override val section: String,
+) : GridRow {
     override val key get() = "c_${index}_$id"
 }
 
@@ -196,8 +230,9 @@ private fun buildRows(items: List<Item>, grouping: String, groups: List<List<Int
     for (g in units) {
         val first = items.getOrNull(g.first()) ?: continue
         val month = monthLabel(first.time)
+        var label = ""
         if (grouping != "none") {
-            val label = when (grouping) {
+            label = when (grouping) {
                 "day" -> dayLabel(first.time)
                 "year" -> yearLabel(first.time)
                 else -> month
@@ -211,14 +246,15 @@ private fun buildRows(items: List<Item>, grouping: String, groups: List<List<Int
             }
         }
         count += g.size
-        out += CellRow(g.first(), first.id, g, month)
+        out += CellRow(g.first(), first.id, g, month, label)
     }
     closeHeader()
     return out
 }
 
 fun galleryKey(source: Source) =
-    "${source.key}_${Settings.sharedSpace}_${Settings.sortBy}_${Settings.sortDesc}_${Settings.mediaFilter}"
+    "${source.key}_${Settings.sharedSpace}_${Settings.sortBy}_${Settings.sortDesc}_${Settings.mediaFilter}" +
+        if (source is FavSource) "_${Favorites.version}" else ""
 
 /** 두 손가락 오므리기/벌리기로 열 개수 조절 */
 private fun Modifier.pinchColumns(onChange: (Int) -> Unit) = pointerInput(Unit) {
@@ -240,7 +276,46 @@ private fun Modifier.pinchColumns(onChange: (Int) -> Unit) = pointerInput(Unit) 
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+/**
+ * 길게 누른 뒤 끌어서 여러 장 고르기 (구글 포토 방식).
+ * 길게 누르기 전까지는 아무것도 가로채지 않아서 일반 스크롤·탭은 그대로 동작한다.
+ */
+private fun Modifier.longPressDrag(
+    key: Any,
+    onStart: (Offset) -> Boolean,
+    onMove: (Offset) -> Unit,
+    onEnd: () -> Unit,
+) = pointerInput(key) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        val slop = viewConfiguration.touchSlop
+        val early = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+            var stop = false
+            while (!stop) {
+                val e = awaitPointerEvent(PointerEventPass.Initial)
+                val c = e.changes.firstOrNull { it.id == down.id }
+                if (e.changes.count { it.pressed } > 1 || c == null || !c.pressed ||
+                    (c.position - down.position).getDistance() > slop || c.isConsumed
+                ) stop = true
+            }
+            true
+        }
+        if (early != null) return@awaitEachGesture
+        if (!onStart(down.position)) return@awaitEachGesture
+        try {
+            while (true) {
+                val e = awaitPointerEvent(PointerEventPass.Initial)
+                val c = e.changes.firstOrNull { it.id == down.id } ?: break
+                e.changes.forEach { it.consume() }
+                if (!c.pressed) break
+                onMove(c.position)
+            }
+        } finally {
+            onEnd()
+        }
+    }
+}
+
 @Composable
 fun GalleryGrid(
     source: Source,
@@ -252,21 +327,26 @@ fun GalleryGrid(
     val vm: GalleryViewModel = viewModel(key = gKey) { GalleryViewModel(source) }
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
+    val density = LocalDensity.current
     val grouping = Settings.grouping
     val stack = Settings.groupSimilar && Settings.sortBy == "takentime"
     val simVersion = Similar.version
     val simLevel = Settings.similarLevel
     val wide = LocalConfiguration.current.screenWidthDp >= 600
     val cols = Settings.columns + if (wide) 2 else 0
+    val showTags = Settings.showTags && source !is TagSource
 
-    LaunchedEffect(stack, simLevel) { if (stack) vm.ensureSimilar() }
+    LaunchedEffect(stack) { if (stack) vm.ensureSimilar() }
 
     val rows = remember(vm.items.size, grouping, stack, if (stack) simVersion else 0, simLevel) {
         val list = vm.items.toList()
         buildRows(list, grouping, if (stack) Similar.groups(list) else null)
     }
+    val keyToRow = remember(rows) { HashMap<Any, Int>(rows.size * 2).apply { rows.forEachIndexed { i, r -> put(r.key, i) } } }
     val state = rememberLazyGridState()
     val currentRows by rememberUpdatedState(rows)
+    val currentKeyToRow by rememberUpdatedState(keyToRow)
 
     // 뷰어에서 돌아오면 마지막으로 본 사진 근처로
     LaunchedEffect(Unit) {
@@ -280,12 +360,66 @@ fun GalleryGrid(
 
     val selecting = vm.selected.isNotEmpty()
     BackHandler(enabled = selecting) { vm.selected.clear() }
+    DisposableEffect(selecting) {
+        SelectionMode.active = selecting
+        onDispose { SelectionMode.active = false }
+    }
 
     var albumDialog by remember { mutableStateOf<List<Long>?>(null) }
     var tagDialog by remember { mutableStateOf<List<Long>?>(null) }
     var removeAsk by remember { mutableStateOf<List<Long>?>(null) }
 
     fun membersOf(r: CellRow): List<Item> = r.members.mapNotNull { vm.items.getOrNull(it) }
+    fun idsOf(r: CellRow): List<Long> = r.members.mapNotNull { vm.items.getOrNull(it)?.id }
+
+    // ─── 끌어서 고르기 상태 ───
+    var dragAnchor by remember { mutableStateOf(-1) }
+    var dragLast by remember { mutableStateOf(-1) }
+    var dragSelect by remember { mutableStateOf(true) }
+    var dragBase by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var pointer by remember { mutableStateOf<Offset?>(null) }
+
+    fun rowAt(p: Offset): Int? {
+        val hit = state.layoutInfo.visibleItemsInfo.firstOrNull {
+            p.x >= it.offset.x && p.x < it.offset.x + it.size.width &&
+                p.y >= it.offset.y && p.y < it.offset.y + it.size.height
+        } ?: return null
+        val r = currentKeyToRow[hit.key] ?: return null
+        return if (currentRows.getOrNull(r) is CellRow) r else null
+    }
+
+    fun applyRange(to: Int) {
+        if (dragAnchor < 0 || to == dragLast) return
+        dragLast = to
+        val (a, b) = if (dragAnchor <= to) dragAnchor to to else to to dragAnchor
+        val range = HashSet<Long>()
+        for (i in a..b) (currentRows.getOrNull(i) as? CellRow)?.let { range += idsOf(it) }
+        val next = if (dragSelect) dragBase + range else dragBase - range
+        vm.selected.keys.filter { it !in next }.forEach { vm.selected.remove(it) }
+        next.forEach { vm.selected[it] = Unit }
+    }
+
+    // 손가락이 위·아래 가장자리에 가까울수록 빠르게 자동 스크롤
+    LaunchedEffect(dragAnchor >= 0) {
+        if (dragAnchor < 0) return@LaunchedEffect
+        val edge = with(density) { 110.dp.toPx() }
+        val maxSpeed = with(density) { 46.dp.toPx() }
+        while (dragAnchor >= 0) {
+            withFrameNanos { }
+            val p = pointer ?: continue
+            val h = state.layoutInfo.viewportSize.height.toFloat()
+            val depth = when {
+                p.y < edge -> -((edge - p.y) / edge)
+                p.y > h - edge -> (p.y - (h - edge)) / edge
+                else -> 0f
+            }.coerceIn(-1.6f, 1.6f)
+            if (depth != 0f) {
+                val speed = maxSpeed * depth * abs(depth)
+                state.scrollBy(speed)
+                rowAt(Offset(p.x, p.y.coerceIn(1f, h - 1f)))?.let { applyRange(it) }
+            }
+        }
+    }
 
     Box(modifier.fillMaxSize()) {
         LazyVerticalGrid(
@@ -293,6 +427,31 @@ fun GalleryGrid(
             state = state,
             modifier = Modifier
                 .fillMaxSize()
+                .longPressDrag(
+                    key = vm,
+                    onStart = { p ->
+                        val r = rowAt(p)
+                        val cell = r?.let { currentRows[it] as? CellRow }
+                        if (r == null || cell == null) {
+                            false
+                        } else {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            val ids = idsOf(cell)
+                            dragSelect = !(ids.isNotEmpty() && ids.all { it in vm.selected })
+                            dragBase = vm.selected.keys.toSet()
+                            dragAnchor = r
+                            dragLast = -1
+                            pointer = p
+                            applyRange(r)
+                            true
+                        }
+                    },
+                    onMove = { p ->
+                        pointer = p
+                        rowAt(p)?.let { applyRange(it) }
+                    },
+                    onEnd = { dragAnchor = -1; pointer = null },
+                )
                 .pinchColumns { d -> Settings.columns = (Settings.columns + d).coerceIn(1, 8) },
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -302,8 +461,8 @@ fun GalleryGrid(
             if (stack && Similar.pending > 0) {
                 item(span = { GridItemSpan(maxLineSpan) }, key = "similar_progress") {
                     Text(
-                        "비슷한 사진 찾는 중… 남은 ${Similar.pending}장",
-                        color = Color.Gray, style = MaterialTheme.typography.labelMedium,
+                        "비슷한 사진 찾는 중… 남은 ${Similar.pending}장 (처음 한 번만)",
+                        color = Palette.sub, style = MaterialTheme.typography.labelMedium,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                     )
                 }
@@ -316,25 +475,17 @@ fun GalleryGrid(
                 contentType = { if (rows[it] is HeaderRow) 0 else 1 },
             ) { i ->
                 when (val r = rows[i]) {
-                    is HeaderRow -> Row(
-                        Modifier.padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 6.dp),
-                        verticalAlignment = Alignment.Bottom,
-                    ) {
-                        Text(r.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text(
-                            "${r.count}장", color = Color.Gray, style = MaterialTheme.typography.labelMedium,
-                            modifier = Modifier.padding(start = 8.dp, bottom = 2.dp),
-                        )
-                    }
+                    is HeaderRow -> SectionHeader(r, state)
                     is CellRow -> {
                         val item = vm.items.getOrNull(r.index) ?: return@items
-                        val memberIds = r.members.mapNotNull { vm.items.getOrNull(it)?.id }
+                        val memberIds = idsOf(r)
                         val isSel = memberIds.isNotEmpty() && memberIds.all { it in vm.selected }
                         Thumb(
                             item = item,
                             stackCount = r.members.size,
                             selecting = selecting,
                             selected = isSel,
+                            showTags = showTags,
                             onClick = {
                                 if (selecting) {
                                     if (isSel) memberIds.forEach { vm.selected.remove(it) }
@@ -350,7 +501,6 @@ fun GalleryGrid(
                                     nav.navigate("viewer/${r.index}")
                                 }
                             },
-                            onLongClick = { memberIds.forEach { vm.selected[it] = Unit } },
                         )
                     }
                 }
@@ -362,10 +512,12 @@ fun GalleryGrid(
                     vm.loading && vm.items.isEmpty() -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(Modifier.size(28.dp))
                     }
-                    vm.end && vm.items.isEmpty() -> MessageBox("사진이 없어요.")
+                    vm.end && vm.items.isEmpty() -> MessageBox(
+                        if (source is FavSource) "즐겨찾기가 없어요.\n사진을 길게 눌러 고른 뒤 ♡를 누르면 여기에 모여요." else "사진이 없어요."
+                    )
                     else -> Text(
                         if (vm.loading) "${vm.items.size}개 불러오는 중…" else "${vm.items.size}개",
-                        color = Color.Gray,
+                        color = Palette.sub,
                         style = MaterialTheme.typography.labelMedium,
                         modifier = Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 90.dp),
                         textAlign = TextAlign.Center,
@@ -373,6 +525,8 @@ fun GalleryGrid(
                 }
             }
         }
+
+        if (grouping != "none") StickyDate(state, rows, keyToRow)
 
         MonthScroller(state, rows, Modifier.align(Alignment.TopEnd))
 
@@ -383,14 +537,26 @@ fun GalleryGrid(
         ) {
             Surface(
                 shadowElevation = 8.dp,
-                shape = RoundedCornerShape(16.dp),
-                color = Color.White,
-                modifier = Modifier.navigationBarsPadding().padding(12.dp),
+                shape = RoundedCornerShape(18.dp),
+                color = Palette.card,
+                modifier = Modifier.navigationBarsPadding().padding(10.dp),
             ) {
-                Row(Modifier.padding(horizontal = 6.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { vm.selected.clear() }) { Icon(Icons.Filled.Close, "선택 취소") }
-                    Text("${vm.selected.size}개", modifier = Modifier.padding(end = 4.dp), fontWeight = FontWeight.SemiBold)
+                    Text("${vm.selected.size}", modifier = Modifier.padding(end = 6.dp), fontWeight = FontWeight.Bold)
                     val ids = vm.selected.keys.toList()
+                    val selItems = vm.items.filter { it.id in vm.selected }
+                    val allFav = Favorites.version.let { Favorites.allFav(selItems) }
+                    ActionButton(if (allFav) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder, if (allFav) "해제" else "즐겨찾기") {
+                        if (allFav) {
+                            Favorites.remove(ids)
+                            toast(ctx, "즐겨찾기에서 ${ids.size}장을 뺐어요")
+                        } else {
+                            Favorites.add(selItems)
+                            toast(ctx, "즐겨찾기에 ${ids.size}장을 넣었어요")
+                        }
+                        vm.selected.clear()
+                    }
                     ActionButton(Icons.Filled.LibraryAdd, "앨범") { albumDialog = ids }
                     ActionButton(Icons.AutoMirrored.Filled.Label, "태그") { tagDialog = ids }
                     when (source) {
@@ -444,11 +610,81 @@ fun GalleryGrid(
     }
 }
 
+/** 목록 속 큰 날짜 제목 — 화면 위쪽에 가까워질수록 조금씩 작아짐 */
 @Composable
-private fun ActionButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
-    TextButton(onClick = onClick) {
-        Icon(icon, null, modifier = Modifier.size(18.dp))
-        Text(label, modifier = Modifier.padding(start = 4.dp))
+private fun SectionHeader(r: HeaderRow, state: LazyGridState) {
+    val density = LocalDensity.current
+    val zone = with(density) { 140.dp.toPx() }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 14.dp, end = 14.dp, top = 22.dp, bottom = 8.dp)
+            .graphicsLayer {
+                val y = state.layoutInfo.visibleItemsInfo.firstOrNull { it.key == r.key }?.offset?.y?.toFloat() ?: zone
+                val t = (y / zone).coerceIn(0f, 1f)
+                val sc = 0.72f + 0.28f * t
+                scaleX = sc
+                scaleY = sc
+                alpha = 0.55f + 0.45f * t
+                transformOrigin = TransformOrigin(0f, 1f)
+            },
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        Text(r.label, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = Palette.fg)
+        Text(
+            "${r.count}장", color = Palette.sub, style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.padding(start = 8.dp, bottom = 3.dp),
+        )
+    }
+}
+
+/** 화면 위에 작게 붙어 있는 현재 날짜 — 다음 날짜 제목이 올라오면 밀려 올라감 */
+@Composable
+private fun StickyDate(state: LazyGridState, rows: List<GridRow>, keyToRow: Map<Any, Int>) {
+    val density = LocalDensity.current
+    val boxH = with(density) { 40.dp.toPx() }
+    val info by remember(rows, keyToRow) {
+        derivedStateOf {
+            val visible = state.layoutInfo.visibleItemsInfo
+            val firstIdx = visible.indexOfFirst { keyToRow.containsKey(it.key) }
+            if (firstIdx < 0) return@derivedStateOf null
+            val first = visible[firstIdx]
+            val row = rows.getOrNull(keyToRow[first.key] ?: -1) ?: return@derivedStateOf null
+            // 맨 위 큰 제목이 아직 보이면 작은 표시는 숨김
+            if (row is HeaderRow && first.offset.y > -first.size.height / 2) return@derivedStateOf null
+            val next = visible.drop(firstIdx + 1).firstOrNull { v ->
+                v.offset.y > 0 && rows.getOrNull(keyToRow[v.key] ?: -1) is HeaderRow
+            }
+            row.section to (next?.offset?.y ?: Int.MAX_VALUE)
+        }
+    }
+    val v = info ?: return
+    if (v.first.isEmpty()) return
+    Box(
+        Modifier
+            .padding(start = 10.dp, top = 6.dp)
+            .graphicsLayer {
+                val push = v.second.toFloat() - boxH
+                translationY = if (push < 0f) push else 0f
+            }
+            .background(Palette.card.copy(alpha = 0.94f), RoundedCornerShape(14.dp))
+            .border(1.dp, Palette.divider, RoundedCornerShape(14.dp))
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Text(v.first, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = Palette.fg)
+    }
+}
+
+@Composable
+private fun ActionButton(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Column(
+        Modifier
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(icon, label, modifier = Modifier.size(22.dp), tint = MaterialTheme.colorScheme.primary)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = Palette.fg)
     }
 }
 
@@ -463,11 +699,8 @@ private fun MonthScroller(state: LazyGridState, rows: List<GridRow>, modifier: M
     val first by remember { derivedStateOf { state.firstVisibleItemIndex } }
     val currentRows by rememberUpdatedState(rows)
 
-    // 스크롤할 때 나타났다가 멈추면 잠시 뒤 사라짐
     LaunchedEffect(state) {
-        snapshotFlow { state.isScrollInProgress }.collect { moving ->
-            if (moving) show = true
-        }
+        snapshotFlow { state.isScrollInProgress }.collect { moving -> if (moving) show = true }
     }
     LaunchedEffect(show, dragging, state.isScrollInProgress) {
         if (show && !dragging && !state.isScrollInProgress) {
@@ -524,15 +757,14 @@ private fun MonthScroller(state: LazyGridState, rows: List<GridRow>, modifier: M
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun Thumb(
     item: Item,
     stackCount: Int = 1,
     selecting: Boolean = false,
     selected: Boolean = false,
+    showTags: Boolean = false,
     onClick: () -> Unit,
-    onLongClick: () -> Unit = {},
 ) {
     val ctx = LocalContext.current
     val size = Settings.thumbSize
@@ -545,11 +777,12 @@ fun Thumb(
             .diskCacheKey(key)
             .build()
     }
+    val fav = Favorites.version.let { Favorites.isFav(item.id) }
     Box(
         Modifier
             .aspectRatio(1f)
-            .background(Color(0xFFEFEFF2))
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .background(Palette.placeholder)
+            .clickable(onClick = onClick)
     ) {
         AsyncImage(
             model = req,
@@ -574,6 +807,12 @@ fun Thumb(
                 )
             }
         }
+        if (fav && !selecting) {
+            Icon(
+                Icons.Filled.Favorite, "즐겨찾기", tint = Color.White,
+                modifier = Modifier.align(Alignment.TopStart).padding(5.dp).size(15.dp),
+            )
+        }
         if (item.isVideo) {
             Row(
                 Modifier
@@ -589,7 +828,7 @@ fun Thumb(
                 }
             }
         }
-        if (Settings.showTags && item.tags.isNotEmpty()) {
+        if (showTags && item.tags.isNotEmpty()) {
             Text(
                 "#" + item.tags.first() + if (item.tags.size > 1) " +${item.tags.size - 1}" else "",
                 color = Color.White,

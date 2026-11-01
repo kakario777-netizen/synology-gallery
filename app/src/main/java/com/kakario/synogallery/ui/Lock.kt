@@ -128,7 +128,7 @@ fun LockScreen() {
     Column(
         Modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(com.kakario.synogallery.Palette.bg)
             .pointerInput(Unit) { detectTapGestures { } } // 아래 화면으로 터치가 새지 않게
             .systemBarsPadding()
             .padding(24.dp),
@@ -138,7 +138,7 @@ fun LockScreen() {
         Icon(Icons.Filled.Lock, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(40.dp))
         Text(
             message,
-            color = if (error) MaterialTheme.colorScheme.error else Color(0xFF1B1B1F),
+            color = if (error) MaterialTheme.colorScheme.error else com.kakario.synogallery.Palette.fg,
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(top = 12.dp, bottom = 28.dp),
         )
@@ -175,7 +175,7 @@ fun PatternSetup(onDone: (String) -> Unit, onCancel: () -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(com.kakario.synogallery.Palette.bg)
             .pointerInput(Unit) { detectTapGestures { } } // 아래 화면으로 터치가 새지 않게
             .systemBarsPadding()
             .padding(24.dp),
@@ -185,7 +185,7 @@ fun PatternSetup(onDone: (String) -> Unit, onCancel: () -> Unit) {
         Icon(Icons.Filled.Lock, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(40.dp))
         Text(
             message,
-            color = if (error) MaterialTheme.colorScheme.error else Color(0xFF1B1B1F),
+            color = if (error) MaterialTheme.colorScheme.error else com.kakario.synogallery.Palette.fg,
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(top = 12.dp, bottom = 28.dp),
         )

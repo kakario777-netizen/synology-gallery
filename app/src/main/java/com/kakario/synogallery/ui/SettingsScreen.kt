@@ -96,6 +96,12 @@ fun SettingsScreen(nav: NavController, onLogout: () -> Unit) {
             item { Section("화면") }
             item { AccentPicker() }
             item {
+                Choice(
+                    "배경색", Settings.bgTheme,
+                    com.kakario.synogallery.Palette.BACKGROUNDS.map { (k, label) -> label to k },
+                ) { Settings.bgTheme = it }
+            }
+            item {
                 val visible = Settings.visibleTabs()
                 Choice(
                     "첫 화면", Settings.startTab.takeIf { it in visible } ?: visible.first(),
@@ -200,7 +206,14 @@ fun SettingsScreen(nav: NavController, onLogout: () -> Unit) {
 
             // ─── 동영상 ───
             item { Section("동영상") }
-            item { Toggle("열면 바로 재생", null, Settings.autoPlayVideo) { Settings.autoPlayVideo = it } }
+            item {
+                Toggle(
+                    "넘기면서 바로 재생",
+                    "구글 포토처럼 사진 보다가 영상이 나오면 그 자리에서 재생돼요. 끄면 눌렀을 때 플레이어가 열려요",
+                    Settings.inlineVideo,
+                ) { Settings.inlineVideo = it }
+            }
+            item { Toggle("플레이어 열면 바로 재생", null, Settings.autoPlayVideo) { Settings.autoPlayVideo = it } }
             item { Toggle("반복 재생", null, Settings.loopVideo) { Settings.loopVideo = it } }
             item { Toggle("소리 끄고 시작", null, Settings.startMuted) { Settings.startMuted = it } }
 
@@ -355,7 +368,7 @@ private fun TabManager() {
                     checked = tab !in hidden,
                     onCheckedChange = { on ->
                         val newHidden = if (on) hidden - tab else hidden + tab
-                        if (newHidden.size >= 4) {
+                        if (newHidden.size >= HOME_TABS.size) {
                             toast(ctx, "탭은 하나 이상 있어야 해요")
                         } else {
                             Settings.hiddenTabs = newHidden.joinToString(",")
@@ -381,7 +394,7 @@ private fun TabManager() {
 @Composable
 private fun Section(title: String) {
     Column {
-        HorizontalDivider(Modifier.padding(top = 8.dp), color = Color(0xFFE6E6EA))
+        HorizontalDivider(Modifier.padding(top = 8.dp), color = com.kakario.synogallery.Palette.divider)
         Text(
             title, color = MaterialTheme.colorScheme.primary,
             style = MaterialTheme.typography.labelLarge,

@@ -50,8 +50,8 @@ fun SystemBars(visible: Boolean, darkScreen: Boolean = true) {
         }
         onDispose {
             c.show(WindowInsetsCompat.Type.systemBars())
-            c.isAppearanceLightStatusBars = true
-            c.isAppearanceLightNavigationBars = true
+            c.isAppearanceLightStatusBars = !com.kakario.synogallery.Palette.dark
+            c.isAppearanceLightNavigationBars = !com.kakario.synogallery.Palette.dark
         }
     }
 }
@@ -62,7 +62,7 @@ fun MessageBox(text: String, action: String? = null, onAction: () -> Unit = {}) 
         Modifier.fillMaxWidth().padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(text, color = Color(0xFF6B6B70), textAlign = TextAlign.Center)
+        Text(text, color = com.kakario.synogallery.Palette.sub, textAlign = TextAlign.Center)
         if (action != null) TextButton(onClick = onAction) { Text(action) }
     }
 }

@@ -38,6 +38,8 @@ object Settings {
     var showTags by P("showTags", false)
     var similarLevel by P("similarLevel", 3)       // 1 엄격 ~ 4 아주 넓게
     var accent by P("accent", "red")
+    var bgTheme by P("bgTheme", "white")          // white / ivory / gray / dark
+    var inlineVideo by P("inlineVideo", false)    // 뷰어에서 영상 바로 재생
 
     // 잠금
     var lockPattern by P("lockPattern", "")        // 패턴 해시 (비어 있으면 잠금 꺼짐)
@@ -47,14 +49,14 @@ object Settings {
     /** 보이는 탭 (순서대로) */
     fun visibleTabs(): List<Int> {
         val hidden = hiddenTabs.split(',').mapNotNull { it.toIntOrNull() }.toSet()
-        val order = tabOrder.split(',').mapNotNull { it.toIntOrNull() }.filter { it in 0..3 }.distinct()
-        val full = order + (0..3).filter { it !in order }
+        val order = tabOrder.split(',').mapNotNull { it.toIntOrNull() }.filter { it in 0..4 }.distinct()
+        val full = order + (0..4).filter { it !in order }
         return full.filter { it !in hidden }.ifEmpty { listOf(0) }
     }
 
     fun orderedTabs(): List<Int> {
-        val order = tabOrder.split(',').mapNotNull { it.toIntOrNull() }.filter { it in 0..3 }.distinct()
-        return order + (0..3).filter { it !in order }
+        val order = tabOrder.split(',').mapNotNull { it.toIntOrNull() }.filter { it in 0..4 }.distinct()
+        return order + (0..4).filter { it !in order }
     }
 
     // 정렬·필터

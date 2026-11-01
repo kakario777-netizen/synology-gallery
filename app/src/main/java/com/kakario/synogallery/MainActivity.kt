@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -46,25 +48,41 @@ class MainActivity : FragmentActivity() {
         )
         setContent {
             val accent = accentColor(Settings.accent)
+            val bg = Palette.bg
+            val fg = Palette.fg
+            val dark = Palette.dark
+            val view = androidx.compose.ui.platform.LocalView.current
+            androidx.compose.runtime.SideEffect {
+                val c = androidx.core.view.WindowCompat.getInsetsController(window, view)
+                c.isAppearanceLightStatusBars = !dark
+                c.isAppearanceLightNavigationBars = !dark
+                window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(bg.toArgb()))
+            }
+            val tint = accent.copy(alpha = if (dark) 0.28f else 0.14f).compositeOver(bg)
+            val base = if (dark) darkColorScheme() else lightColorScheme()
             MaterialTheme(
-                colorScheme = lightColorScheme(
+                colorScheme = base.copy(
                     primary = accent,
                     onPrimary = Color.White,
-                    primaryContainer = accent.copy(alpha = 0.14f).compositeOver(Color.White),
-                    onPrimaryContainer = accent,
+                    primaryContainer = tint,
+                    onPrimaryContainer = if (dark) Color.White else accent,
                     secondary = accent,
-                    secondaryContainer = accent.copy(alpha = 0.14f).compositeOver(Color.White),
-                    onSecondaryContainer = Color(0xFF1B1B1F),
-                    background = Color.White,
-                    surface = Color.White,
-                    surfaceContainer = Color.White,
-                    surfaceContainerHigh = Color(0xFFF6F6F8),
-                    surfaceContainerHighest = Color(0xFFF0F0F3),
-                    onBackground = Color(0xFF1B1B1F),
-                    onSurface = Color(0xFF1B1B1F),
+                    secondaryContainer = tint,
+                    onSecondaryContainer = fg,
+                    background = bg,
+                    surface = bg,
+                    surfaceContainer = Palette.card,
+                    surfaceContainerLow = Palette.card,
+                    surfaceContainerHigh = Palette.card,
+                    surfaceContainerHighest = Palette.placeholder,
+                    onBackground = fg,
+                    onSurface = fg,
+                    onSurfaceVariant = Palette.sub,
+                    outline = if (dark) Color(0xFF55555C) else Color(0xFFB8B8BF),
+                    outlineVariant = Palette.divider,
                 )
             ) {
-                Surface(color = Color.White, contentColor = Color(0xFF1B1B1F)) {
+                Surface(color = bg, contentColor = fg) {
                     Box(Modifier.fillMaxSize()) {
                         AppNav()
                         if (AppLock.locked) LockScreen()
@@ -119,7 +137,7 @@ fun AppNav() {
 
     val s = start
     if (s == null) {
-        Box(Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxSize().background(Palette.bg), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
         return
