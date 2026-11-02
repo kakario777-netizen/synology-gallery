@@ -282,7 +282,7 @@ object Syno {
 
     // ───────────────── 목록 ─────────────────
 
-    private val itemExtras = JSONArray(listOf("thumbnail", "resolution", "video_meta", "tag")).toString()
+    private val itemExtras = JSONArray(listOf("thumbnail", "resolution", "video_meta", "tag", "gps")).toString()
 
     suspend fun listItems(source: Source, offset: Int, limit: Int): List<Item> = call {
         val p = mutableMapOf(
@@ -333,6 +333,8 @@ object Syno {
             thumbUnitId = th?.optLong("unit_id", id) ?: id,
             hasXl = th?.optString("xl") == "ready",
             duration = vm?.optLong("duration") ?: 0L,
+            lat = add?.optJSONObject("gps")?.optDouble("latitude", 0.0)?.takeIf { it != 0.0 && !it.isNaN() },
+            lon = add?.optJSONObject("gps")?.optDouble("longitude", 0.0)?.takeIf { it != 0.0 && !it.isNaN() },
             tags = add?.optJSONArray("tag")?.let { a ->
                 (0 until a.length()).mapNotNull { a.optJSONObject(it)?.optString("name")?.takeIf { n -> n.isNotEmpty() } }
             } ?: emptyList(),
@@ -547,6 +549,9 @@ object Syno {
         }
         out.sortedByDescending { it.count }
     }
+
+    /** 장소 안 사진 한 장 (위치 확인용) */
+    suspend fun firstInPlace(placeId: Long): Item? = listItems(PlaceSource(placeId), 0, 5).firstOrNull { it.lat != null }
 
     /** 원본 앞부분만 받기 (모션 포토인지 확인용) */
     fun originalHead(item: Item, bytes: Int): ByteArray? = try {

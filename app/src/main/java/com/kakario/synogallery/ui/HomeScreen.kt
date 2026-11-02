@@ -28,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.MoreVert
@@ -155,8 +156,16 @@ private fun CoverCardView(
     onDelete: () -> Unit,
     albumCounts: Boolean = false,
     editable: Boolean = true,
+    placeName: Boolean = false,
 ) {
     val ctx = LocalContext.current
+    // 장소 이름은 한글로
+    var shownName by remember(c.id, c.name) {
+        mutableStateOf(if (placeName) com.kakario.synogallery.PlaceNames.cached(c.id, c.name) ?: c.name else c.name)
+    }
+    if (placeName) LaunchedEffect(c.id, c.name) {
+        shownName = com.kakario.synogallery.PlaceNames.korean(c.id, c.name)
+    }
     var menu by remember { mutableStateOf(false) }
     // 앨범: 사진 몇 장 · 동영상 몇 개 (갤럭시 갤러리처럼)
     var counts by remember(c.id) { mutableStateOf(AlbumCounts.cache[c.id]) }
@@ -199,7 +208,7 @@ private fun CoverCardView(
         }
         Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                c.name, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                shownName, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f),
                 fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
             )
@@ -243,6 +252,7 @@ private fun CoverGrid(
     albumCounts: Boolean = false,
     leading: (@Composable () -> Unit)? = null,
     editable: Boolean = true,
+    placeNames: Boolean = false,
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -285,6 +295,7 @@ private fun CoverGrid(
                     c, team,
                     albumCounts = albumCounts,
                     editable = editable,
+                    placeName = placeNames,
                     onClick = { onOpen(c) },
                     onRename = { edit = RenameTarget(c) },
                     onDelete = { edit = DeleteTarget(c) },
@@ -708,11 +719,24 @@ fun PlacesTab(nav: NavController) {
         emptyText = "장소가 없어요.\n위치 정보(GPS)가 있는 사진이 있어야 시놀로지 포토가 장소를 만들어요.",
         team = team,
         reloadKey = "places_$team",
-        onOpen = { nav.navigate("place/${it.id}/${Uri.encode(it.name)}") },
+        onOpen = {
+            val ko = com.kakario.synogallery.PlaceNames.cached(it.id, it.name) ?: it.name
+            nav.navigate("place/${it.id}/${Uri.encode(ko)}")
+        },
         rename = { _, _ -> },
         delete = { },
         deleteText = { "" },
         editable = false,
+        placeNames = true,
+        topAction = {
+            Row(
+                Modifier.fillMaxWidth().clickable { nav.navigate("map") }.padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Filled.Map, null, tint = MaterialTheme.colorScheme.primary)
+                Text("지도로 보기", color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 8.dp))
+            }
+        },
     )
 }
 

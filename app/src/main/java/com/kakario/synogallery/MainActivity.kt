@@ -189,6 +189,7 @@ fun AppNav() {
             }
         }
         composable("videos") { Framed { VideosScreen(nav) } }
+        composable("map") { Framed { com.kakario.synogallery.ui.MapScreen(nav) } }
         composable("place/{id}/{title}") { e ->
             Framed {
                 PlaceDetailScreen(

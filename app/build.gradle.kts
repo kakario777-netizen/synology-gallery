@@ -67,6 +67,7 @@ dependencies {
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("org.osmdroid:osmdroid-android:6.1.20")
     implementation("me.saket.telephoto:zoomable-image-coil:0.13.0")
 
     implementation("androidx.media3:media3-exoplayer:1.5.1")

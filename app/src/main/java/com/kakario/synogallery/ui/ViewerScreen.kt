@@ -256,52 +256,64 @@ fun ViewerScreen(start: Int, nav: NavController) {
                 ui && down == 0f, enter = fadeIn(), exit = fadeOut(),
                 modifier = Modifier.align(Alignment.TopCenter),
             ) {
-                Row(
+                // 위: 뒤로 + 이름/날짜 두 줄, 아래: 아이콘 줄 (자리 고정)
+                Column(
                     Modifier
                         .fillMaxWidth()
-                        .background(Brush.verticalGradient(listOf(Color(0xCC000000), Color.Transparent)))
+                        .background(Brush.verticalGradient(listOf(Color(0xDD000000), Color(0x66000000), Color.Transparent)))
                         .statusBarsPadding()
-                        .padding(4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                        .padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 10.dp),
                 ) {
-                    IconButton(onClick = { nav.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "뒤로", tint = Color.White)
-                    }
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            current.filename, color = Color.White, maxLines = 1,
-                            overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall,
-                        )
-                        Text(
-                            "${fullDate(current.time)} · ${pager.currentPage + 1}/${items.size}",
-                            color = Color(0xFFCCCCCC), style = MaterialTheme.typography.labelSmall,
-                        )
-                    }
-                    val fav = com.kakario.synogallery.Favorites.version.let { com.kakario.synogallery.Favorites.isFav(current.id) }
-                    IconButton(onClick = { com.kakario.synogallery.Favorites.toggle(current) }) {
-                        Icon(
-                            if (fav) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder, "즐겨찾기",
-                            tint = if (fav) MaterialTheme.colorScheme.primary else Color.White,
-                        )
-                    }
-                    if (Settings.motionPhoto != "off" && motionItem == current.id) {
-                        IconButton(onClick = { motionTick++ }) {
-                            Icon(Icons.Filled.MotionPhotosOn, "모션 재생", tint = Color.White)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { nav.popBackStack() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "뒤로", tint = Color.White)
+                        }
+                        Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                            Text(
+                                current.filename, color = Color.White, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall,
+                            )
+                            Text(
+                                "${fullDate(current.time)}  ·  ${pager.currentPage + 1} / ${items.size}",
+                                color = Color(0xFFD0D0D0), style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            )
                         }
                     }
-                    IconButton(onClick = { slideshow = !slideshow }) {
-                        Icon(if (slideshow) Icons.Filled.Pause else Icons.Filled.Slideshow, "슬라이드쇼", tint = Color.White)
-                    }
-                    IconButton(onClick = { tagEdit = current }) {
-                        Icon(Icons.AutoMirrored.Filled.Label, "태그", tint = Color.White)
-                    }
-                    IconButton(onClick = { albumAdd = current }) {
-                        Icon(Icons.Filled.LibraryAdd, "앨범에 추가", tint = Color.White)
-                    }
-                    IconButton(onClick = {
-                        scope.launch { pos.animateTo(if (detailsOpen) 0f else -panelH) }
-                    }) {
-                        Icon(Icons.Filled.Info, "정보", tint = Color.White)
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        val fav = com.kakario.synogallery.Favorites.version.let { com.kakario.synogallery.Favorites.isFav(current.id) }
+                        IconButton(onClick = { com.kakario.synogallery.Favorites.toggle(current) }) {
+                            Icon(
+                                if (fav) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder, "즐겨찾기",
+                                tint = if (fav) MaterialTheme.colorScheme.primary else Color.White,
+                            )
+                        }
+                        // 모션 버튼 자리는 항상 비워 둠 → 다른 아이콘이 움직이지 않음
+                        val hasMotion = Settings.motionPhoto != "off" && motionItem == current.id
+                        IconButton(onClick = { if (hasMotion) motionTick++ }, enabled = hasMotion) {
+                            Icon(
+                                Icons.Filled.MotionPhotosOn, "모션 재생",
+                                tint = if (hasMotion) Color.White else Color(0x40FFFFFF),
+                            )
+                        }
+                        IconButton(onClick = { slideshow = !slideshow }) {
+                            Icon(if (slideshow) Icons.Filled.Pause else Icons.Filled.Slideshow, "슬라이드쇼", tint = Color.White)
+                        }
+                        IconButton(onClick = { tagEdit = current }) {
+                            Icon(Icons.AutoMirrored.Filled.Label, "태그", tint = Color.White)
+                        }
+                        IconButton(onClick = { albumAdd = current }) {
+                            Icon(Icons.Filled.LibraryAdd, "앨범에 추가", tint = Color.White)
+                        }
+                        IconButton(onClick = {
+                            scope.launch { pos.animateTo(if (detailsOpen) 0f else -panelH) }
+                        }) {
+                            Icon(Icons.Filled.Info, "정보", tint = Color.White)
+                        }
                     }
                 }
             }

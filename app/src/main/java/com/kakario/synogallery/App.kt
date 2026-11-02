@@ -16,6 +16,7 @@ class App : Application(), ImageLoaderFactory {
         Similar.init(this)
         Favorites.init(this)
         MotionPhoto.init(this)
+        PlaceNames.init(this)
     }
 
     override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)

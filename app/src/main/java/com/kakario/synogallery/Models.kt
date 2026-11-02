@@ -13,6 +13,8 @@ data class Item(
     val hasXl: Boolean,
     val duration: Long,      // 동영상 길이 (ms), 모르면 0
     val tags: List<String> = emptyList(),
+    val lat: Double? = null,
+    val lon: Double? = null,
 ) {
     val isVideo get() = type == "video"
 }
