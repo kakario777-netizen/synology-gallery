@@ -60,6 +60,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -451,17 +452,29 @@ private fun RoundButton(icon: androidx.compose.ui.graphics.vector.ImageVector, d
  * 좌우로 넘기면 이 화면이 사라지면서 재생도 멈춤.
  */
 @Composable
-fun InlineVideo(item: Item, uiVisible: Boolean, onTap: () -> Unit, onFullscreen: () -> Unit) {
+fun InlineVideo(
+    item: Item,
+    uiVisible: Boolean,
+    onTap: () -> Unit,
+    onFullscreen: () -> Unit,
+    poster: @Composable () -> Unit = {},
+) {
     val ctx = LocalContext.current
     val player = remember(item.id) { newPlayer(ctx, item) }
     val st = rememberPlayState(player)
     var muted by remember { mutableStateOf(Settings.startMuted) }
     var error by remember { mutableStateOf<String?>(null) }
+    // 첫 화면이 나오기 전까지는 표지 그림을 그대로 보여줌 (검은 화면 깜빡임 방지)
+    var firstFrame by remember(item.id) { mutableStateOf(false) }
 
     DisposableEffect(item.id) {
         val listener = object : Player.Listener {
             override fun onPlayerError(e: PlaybackException) {
                 error = "재생할 수 없어요 (${e.errorCodeName})"
+            }
+
+            override fun onRenderedFirstFrame() {
+                firstFrame = true
             }
         }
         player.addListener(listener)
@@ -476,7 +489,8 @@ fun InlineVideo(item: Item, uiVisible: Boolean, onTap: () -> Unit, onFullscreen:
     KeepScreenOn(true)
 
     Box(Modifier.fillMaxSize()) {
-        VideoSurface(player, Modifier.fillMaxSize())
+        if (!firstFrame) poster()
+        VideoSurface(player, Modifier.fillMaxSize().graphicsLayer { alpha = if (firstFrame) 1f else 0f })
         Box(
             Modifier
                 .fillMaxSize()
@@ -493,7 +507,7 @@ fun InlineVideo(item: Item, uiVisible: Boolean, onTap: () -> Unit, onFullscreen:
                     )
                 }
         )
-        if (!st.playing && !st.buffering && error == null) {
+        if (firstFrame && !st.playing && !st.buffering && error == null) {
             Box(Modifier.align(Alignment.Center)) {
                 RoundButton(Icons.Filled.PlayArrow, "재생", 72) {
                     if (player.playbackState == Player.STATE_ENDED) player.seekTo(0)
@@ -529,4 +543,41 @@ fun InlineVideo(item: Item, uiVisible: Boolean, onTap: () -> Unit, onFullscreen:
             Text(it, color = Color.White, modifier = Modifier.align(Alignment.Center).padding(24.dp), textAlign = TextAlign.Center)
         }
     }
+}
+
+
+// ───────────────────────── 갤럭시 모션 포토 재생 ─────────────────────────
+
+/** 사진 위에 모션 포토 영상을 한 번 재생하고 끝나면 사라짐 */
+@Composable
+fun MotionOverlay(file: java.io.File, onEnd: () -> Unit) {
+    val ctx = LocalContext.current
+    val player = remember(file) {
+        ExoPlayer.Builder(ctx).build().apply {
+            setMediaItem(MediaItem.fromUri(android.net.Uri.fromFile(file)))
+            volume = 0f
+            prepare()
+            playWhenReady = true
+        }
+    }
+    var firstFrame by remember(file) { mutableStateOf(false) }
+    DisposableEffect(file) {
+        val l = object : Player.Listener {
+            override fun onRenderedFirstFrame() {
+                firstFrame = true
+            }
+
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_ENDED) onEnd()
+            }
+
+            override fun onPlayerError(error: PlaybackException) = onEnd()
+        }
+        player.addListener(l)
+        onDispose {
+            player.removeListener(l)
+            player.release()
+        }
+    }
+    VideoSurface(player, Modifier.fillMaxSize().graphicsLayer { alpha = if (firstFrame) 1f else 0f })
 }

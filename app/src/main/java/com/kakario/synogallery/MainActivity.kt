@@ -43,6 +43,7 @@ import com.kakario.synogallery.ui.SettingsScreen
 import com.kakario.synogallery.ui.TagDetailScreen
 import com.kakario.synogallery.ui.ViewerScreen
 import com.kakario.synogallery.ui.VideosScreen
+import com.kakario.synogallery.ui.PlaceDetailScreen
 
 class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -188,6 +189,15 @@ fun AppNav() {
             }
         }
         composable("videos") { Framed { VideosScreen(nav) } }
+        composable("place/{id}/{title}") { e ->
+            Framed {
+                PlaceDetailScreen(
+                    id = e.arguments?.getString("id")?.toLongOrNull() ?: 0L,
+                    title = Uri.decode(e.arguments?.getString("title").orEmpty()),
+                    nav = nav,
+                )
+            }
+        }
         composable("tag/{id}/{title}") { e ->
             Framed {
                 TagDetailScreen(

@@ -19,9 +19,13 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.gestures.snapping.SnapPosition
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.material.icons.filled.MotionPhotosOn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.key
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.animation.AnimatedVisibility
@@ -102,6 +106,8 @@ fun ViewerScreen(start: Int, nav: NavController) {
     // 묶음마다 지금 보고 있는 사진 번호
     val chosen = remember { mutableStateMapOf<Int, Int>() }
     var strip by remember { mutableStateOf(true) }
+    var motionItem by remember { mutableStateOf<Long?>(null) }   // 모션 포토가 있는 사진
+    var motionTick by remember { mutableIntStateOf(0) }          // 누를 때마다 다시 재생
     fun itemAt(page: Int): Item {
         val st = stacks[page]
         return st[(chosen[page] ?: 0).coerceIn(0, st.lastIndex)]
@@ -195,6 +201,7 @@ fun ViewerScreen(start: Int, nav: NavController) {
                             item, uiVisible = ui,
                             onTap = { if (up > 0f) scope.launch { pos.animateTo(0f) } else ui = !ui },
                             onFullscreen = { play(item) },
+                            poster = { PosterImage(item) },
                         )
                     } else {
                         VideoPoster(item, onTap = { ui = !ui }, onPlay = {
@@ -202,7 +209,12 @@ fun ViewerScreen(start: Int, nav: NavController) {
                         })
                     }
                 } else {
-                    PhotoPage(item, onTap = {
+                    PhotoPage(
+                        item,
+                        current = page == pager.currentPage && down == 0f,
+                        motionTick = motionTick,
+                        onMotion = { has -> motionItem = if (has) item.id else if (motionItem == item.id) null else motionItem },
+                        onTap = {
                         if (up > 0f) scope.launch { pos.animateTo(0f) } else ui = !ui
                         if (slideshow) slideshow = false
                     })
@@ -228,11 +240,14 @@ fun ViewerScreen(start: Int, nav: NavController) {
                             .padding(horizontal = 14.dp, vertical = 6.dp),
                     )
                     AnimatedVisibility(strip && ui) {
-                        StackStrip(
-                            stack = curStack,
-                            selected = chosen[pager.currentPage] ?: 0,
-                            onSelect = { chosen[pager.currentPage] = it },
-                        )
+                        val pg = pager.currentPage
+                        key(pg) {
+                            StackStrip(
+                                stack = curStack,
+                                selected = chosen[pg] ?: 0,
+                                onSelect = { chosen[pg] = it },
+                            )
+                        }
                     }
                 }
             }
@@ -268,6 +283,11 @@ fun ViewerScreen(start: Int, nav: NavController) {
                             if (fav) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder, "즐겨찾기",
                             tint = if (fav) MaterialTheme.colorScheme.primary else Color.White,
                         )
+                    }
+                    if (Settings.motionPhoto != "off" && motionItem == current.id) {
+                        IconButton(onClick = { motionTick++ }) {
+                            Icon(Icons.Filled.MotionPhotosOn, "모션 재생", tint = Color.White)
+                        }
                     }
                     IconButton(onClick = { slideshow = !slideshow }) {
                         Icon(if (slideshow) Icons.Filled.Pause else Icons.Filled.Slideshow, "슬라이드쇼", tint = Color.White)
@@ -318,40 +338,61 @@ fun ViewerScreen(start: Int, nav: NavController) {
 @Composable
 private fun StackStrip(stack: List<Item>, selected: Int, onSelect: (Int) -> Unit) {
     val ctx = LocalContext.current
-    val listState = rememberLazyListState()
-    LaunchedEffect(stack) { listState.scrollToItem((selected - 2).coerceAtLeast(0)) }
-    LazyRow(
-        state = listState,
-        modifier = Modifier
+    val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = selected)
+    val fling = rememberSnapFlingBehavior(listState, SnapPosition.Center)
+    val itemW = 54.dp
+    val gap = 4.dp
+
+    // 가운데에 온 사진이 지금 보는 사진
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val center = (info.viewportStartOffset + info.viewportEndOffset) / 2
+            info.visibleItemsInfo.minByOrNull { kotlin.math.abs(it.offset + it.size / 2 - center) }?.index
+        }.collect { idx -> if (idx != null) onSelect(idx) }
+    }
+
+    BoxWithConstraints(
+        Modifier
             .fillMaxWidth()
             .background(Color(0x99000000))
-            .padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        contentPadding = PaddingValues(horizontal = 12.dp),
+            .padding(vertical = 8.dp)
     ) {
-        itemsIndexed(stack, key = { _, it -> it.id }) { i, it ->
-            val key = Syno.thumbKey(it.thumbUnitId, it.cacheKey, "sm")
-            Box(
-                Modifier
-                    .size(if (i == selected) 64.dp else 54.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .border(
-                        if (i == selected) 2.5.dp else 0.dp,
-                        if (i == selected) Color.White else Color.Transparent,
-                        RoundedCornerShape(8.dp),
+        val side = (maxWidth - itemW) / 2
+        LazyRow(
+            state = listState,
+            flingBehavior = fling,
+            horizontalArrangement = Arrangement.spacedBy(gap),
+            contentPadding = PaddingValues(horizontal = side),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            itemsIndexed(stack, key = { _, it -> it.id }) { i, it ->
+                val key = Syno.thumbKey(it.thumbUnitId, it.cacheKey, "sm")
+                val on = i == selected
+                Box(
+                    Modifier
+                        .size(itemW, 62.dp)
+                        .graphicsLayer {
+                            val sc = if (on) 1f else 0.86f
+                            scaleX = sc
+                            scaleY = sc
+                        }
+                        .clip(RoundedCornerShape(8.dp))
+                        .border(if (on) 2.5.dp else 0.dp, if (on) Color.White else Color.Transparent, RoundedCornerShape(8.dp))
+                        .clickable { scope.launch { listState.animateScrollToItem(i) } }
+                ) {
+                    AsyncImage(
+                        model = remember(it.id) {
+                            ImageRequest.Builder(ctx)
+                                .data(Syno.thumbUrl(it.thumbUnitId, it.cacheKey, "sm"))
+                                .memoryCacheKey(key).diskCacheKey(key).build()
+                        },
+                        contentDescription = it.filename,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
                     )
-                    .clickable { onSelect(i) }
-            ) {
-                AsyncImage(
-                    model = remember(it.id) {
-                        ImageRequest.Builder(ctx)
-                            .data(Syno.thumbUrl(it.thumbUnitId, it.cacheKey, "sm"))
-                            .memoryCacheKey(key).diskCacheKey(key).build()
-                    },
-                    contentDescription = it.filename,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
+                }
             }
         }
     }
@@ -438,7 +479,58 @@ private fun InfoLine(k: String, v: String) {
 }
 
 @Composable
-private fun PhotoPage(item: Item, onTap: () -> Unit) {
+private fun PosterImage(item: Item) {
+    val ctx = LocalContext.current
+    val s = if (item.hasXl) "xl" else "m"
+    val key = Syno.thumbKey(item.thumbUnitId, item.cacheKey, s)
+    AsyncImage(
+        model = remember(item.id) {
+            ImageRequest.Builder(ctx)
+                .data(Syno.thumbUrl(item.thumbUnitId, item.cacheKey, s))
+                .memoryCacheKey(key).diskCacheKey(key)
+                .placeholderMemoryCacheKey(Syno.thumbKey(item.thumbUnitId, item.cacheKey, Settings.thumbSize))
+                .crossfade(false)
+                .build()
+        },
+        contentDescription = item.filename,
+        contentScale = ContentScale.Fit,
+        modifier = Modifier.fillMaxSize(),
+    )
+}
+
+@Composable
+private fun PhotoPage(
+    item: Item,
+    current: Boolean,
+    motionTick: Int,
+    onMotion: (Boolean) -> Unit,
+    onTap: () -> Unit,
+) {
+    // 갤럭시 모션 포토: 자동 재생 / 버튼으로 재생 / 표시 안 함
+    val mode = Settings.motionPhoto
+    var motionFile by remember(item.id) { mutableStateOf(com.kakario.synogallery.MotionPhoto.cached(item)) }
+    var playing by remember(item.id) { mutableStateOf(false) }
+    val startTick = remember(item.id) { motionTick }
+    if (mode != "off" && current) {
+        LaunchedEffect(item.id, mode) {
+            val f = motionFile ?: com.kakario.synogallery.MotionPhoto.video(item)
+            motionFile = f
+            onMotion(f != null)
+            if (f != null && mode == "auto") playing = true
+        }
+    }
+    LaunchedEffect(motionTick) { if (motionTick != startTick && current && motionFile != null) playing = true }
+    LaunchedEffect(current) { if (!current) playing = false }
+
+    Box(Modifier.fillMaxSize()) {
+        PhotoImage(item, onTap)
+        val f = motionFile
+        if (playing && f != null) MotionOverlay(f) { playing = false }
+    }
+}
+
+@Composable
+private fun PhotoImage(item: Item, onTap: () -> Unit) {
     val ctx = LocalContext.current
     val quality = Settings.viewerQuality
     val thumbSize = Settings.thumbSize

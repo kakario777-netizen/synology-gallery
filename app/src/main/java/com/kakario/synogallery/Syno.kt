@@ -299,6 +299,7 @@ object Syno {
             is AlbumSource -> p["album_id"] = "${source.id}"
             is FolderSource -> p["folder_id"] = "${source.id}"
             is TagSource -> p["general_tag_id"] = "${source.id}"
+            is PlaceSource -> p["geocoding_id"] = "${source.id}"
             AllSource, FavSource, VideosSource -> {}
         }
         val filter = if (source is VideosSource) "video" else Settings.mediaFilter
@@ -515,6 +516,68 @@ object Syno {
             )
         )
         Unit
+    }
+
+    /** 장소 목록 (시놀로지 포토가 위치 정보로 만든 것) */
+    suspend fun listPlaces(): List<Album> = call {
+        val out = mutableListOf<Album>()
+        var offset = 0
+        while (true) {
+            val data = post(
+                base, mapOf(
+                    "api" to "$prefix.Browse.Geocoding", "version" to "1", "method" to "list",
+                    "offset" to "$offset", "limit" to "500",
+                    "additional" to JSONArray(listOf("thumbnail")).toString(),
+                )
+            )
+            val arr = data.optJSONArray("list") ?: JSONArray()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val th = o.optJSONObject("additional")?.optJSONObject("thumbnail")
+                out += Album(
+                    id = o.optLong("id"),
+                    name = o.optString("name").ifEmpty { o.optString("country") },
+                    count = o.optInt("item_count"),
+                    cacheKey = th?.optString("cache_key").orEmpty(),
+                    thumbUnitId = th?.optLong("unit_id") ?: 0L,
+                )
+            }
+            if (arr.length() < 500) break
+            offset += 500
+        }
+        out.sortedByDescending { it.count }
+    }
+
+    /** 원본 앞부분만 받기 (모션 포토인지 확인용) */
+    fun originalHead(item: Item, bytes: Int): ByteArray? = try {
+        val req = Request.Builder().url(originalUrl(item)).header("Range", "bytes=0-${bytes - 1}").build()
+        client.newCall(req).execute().use { res ->
+            if (!res.isSuccessful) null else res.body?.byteStream()?.use { s ->
+                val buf = ByteArray(bytes)
+                var n = 0
+                while (n < bytes) {
+                    val r = s.read(buf, n, bytes - n)
+                    if (r <= 0) break
+                    n += r
+                }
+                buf.copyOf(n)
+            }
+        }
+    } catch (e: Exception) {
+        null
+    }
+
+    /** 원본 전체를 파일로 받기 */
+    fun downloadOriginal(item: Item, to: java.io.File): Boolean = try {
+        val req = Request.Builder().url(originalUrl(item)).build()
+        client.newCall(req).execute().use { res ->
+            if (!res.isSuccessful) false else {
+                res.body?.byteStream()?.use { input -> to.outputStream().use { input.copyTo(it) } }
+                true
+            }
+        }
+    } catch (e: Exception) {
+        false
     }
 
     /** 전체 동영상 개수 */

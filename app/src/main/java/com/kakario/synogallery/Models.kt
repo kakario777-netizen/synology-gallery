@@ -62,6 +62,10 @@ data object FavSource : Source {
     override val key = "fav"
 }
 
+data class PlaceSource(val id: Long) : Source {
+    override val key get() = "place_$id"
+}
+
 data class TagSource(val id: Long) : Source {
     override val key get() = "tag_$id"
 }

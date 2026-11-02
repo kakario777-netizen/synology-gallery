@@ -74,7 +74,7 @@ import com.kakario.synogallery.Syno
 import com.kakario.synogallery.TagSource
 import kotlinx.coroutines.launch
 
-val HOME_TABS = listOf("사진", "앨범", "태그", "폴더", "즐겨찾기")
+val HOME_TABS = listOf("사진", "앨범", "태그", "폴더", "즐겨찾기", "장소")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -94,9 +94,6 @@ fun HomeScreen(nav: NavController) {
             TopAppBar(
                 title = { Text("시놀 갤러리") },
                 actions = {
-                    TextButton(onClick = { Settings.sharedSpace = !Settings.sharedSpace }) {
-                        Text(if (Settings.sharedSpace) "공유 공간" else "개인 공간")
-                    }
                     IconButton(onClick = { nav.navigate("settings") }) {
                         Icon(Icons.Filled.Settings, "설정")
                     }
@@ -129,6 +126,7 @@ fun HomeScreen(nav: NavController) {
                     1 -> AlbumsTab(nav)
                     2 -> TagsTab(nav)
                     4 -> GalleryGrid(com.kakario.synogallery.FavSource, nav)
+                    5 -> PlacesTab(nav)
                     else -> FolderContent(folderId = null, nav = nav)
                 }
             }
@@ -156,6 +154,7 @@ private fun CoverCardView(
     onRename: () -> Unit,
     onDelete: () -> Unit,
     albumCounts: Boolean = false,
+    editable: Boolean = true,
 ) {
     val ctx = LocalContext.current
     var menu by remember { mutableStateOf(false) }
@@ -172,7 +171,7 @@ private fun CoverCardView(
             }
         }
     }
-    Column(Modifier.combinedClickable(onClick = onClick, onLongClick = { menu = true })) {
+    Column(Modifier.combinedClickable(onClick = onClick, onLongClick = { if (editable) menu = true })) {
         Box(
             Modifier
                 .fillMaxWidth()
@@ -204,7 +203,7 @@ private fun CoverCardView(
                 style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f),
                 fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
             )
-            IconButton(onClick = { menu = true }, modifier = Modifier.size(28.dp)) {
+            if (editable) IconButton(onClick = { menu = true }, modifier = Modifier.size(28.dp)) {
                 Icon(Icons.Filled.MoreVert, "메뉴", tint = Color.Gray, modifier = Modifier.size(18.dp))
             }
         }
@@ -243,6 +242,7 @@ private fun CoverGrid(
     topAction: (@Composable (reload: () -> Unit) -> Unit)? = null,
     albumCounts: Boolean = false,
     leading: (@Composable () -> Unit)? = null,
+    editable: Boolean = true,
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -284,6 +284,7 @@ private fun CoverGrid(
                 CoverCardView(
                     c, team,
                     albumCounts = albumCounts,
+                    editable = editable,
                     onClick = { onOpen(c) },
                     onRename = { edit = RenameTarget(c) },
                     onDelete = { edit = DeleteTarget(c) },
@@ -693,5 +694,41 @@ fun VideosScreen(nav: NavController) {
         },
     ) { pad ->
         GalleryGrid(com.kakario.synogallery.VideosSource, nav, Modifier.padding(pad))
+    }
+}
+
+
+// ───────────────── 장소 ─────────────────
+
+@Composable
+fun PlacesTab(nav: NavController) {
+    val team = Settings.sharedSpace
+    CoverGrid(
+        load = { Syno.listPlaces().map { CoverCard(it.id, it.name, it.count, it.cacheKey, it.thumbUnitId) } },
+        emptyText = "장소가 없어요.\n위치 정보(GPS)가 있는 사진이 있어야 시놀로지 포토가 장소를 만들어요.",
+        team = team,
+        reloadKey = "places_$team",
+        onOpen = { nav.navigate("place/${it.id}/${Uri.encode(it.name)}") },
+        rename = { _, _ -> },
+        delete = { },
+        deleteText = { "" },
+        editable = false,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PlaceDetailScreen(id: Long, title: String, nav: NavController) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                navigationIcon = {
+                    IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "뒤로") }
+                },
+            )
+        },
+    ) { pad ->
+        GalleryGrid(com.kakario.synogallery.PlaceSource(id), nav, Modifier.padding(pad))
     }
 }

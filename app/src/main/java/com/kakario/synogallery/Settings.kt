@@ -40,6 +40,7 @@ object Settings {
     var accent by P("accent", "red")
     var bgTheme by P("bgTheme", "white")          // white / ivory / gray / dark
     var inlineVideo by P("inlineVideo", false)    // 뷰어에서 영상 바로 재생
+    var motionPhoto by P("motionPhoto", "manual")   // auto / manual / off (갤럭시 모션 포토)
     var allVideosAlbum by P("allVideosAlbum", true) // 앨범 탭 맨 앞 '모든 동영상'
     var videoSort by P("videoSort", "date_desc")  // date_desc / date_asc / name / size / length
 
@@ -51,14 +52,14 @@ object Settings {
     /** 보이는 탭 (순서대로) */
     fun visibleTabs(): List<Int> {
         val hidden = hiddenTabs.split(',').mapNotNull { it.toIntOrNull() }.toSet()
-        val order = tabOrder.split(',').mapNotNull { it.toIntOrNull() }.filter { it in 0..4 }.distinct()
-        val full = order + (0..4).filter { it !in order }
+        val order = tabOrder.split(',').mapNotNull { it.toIntOrNull() }.filter { it in 0..5 }.distinct()
+        val full = order + (0..5).filter { it !in order }
         return full.filter { it !in hidden }.ifEmpty { listOf(0) }
     }
 
     fun orderedTabs(): List<Int> {
-        val order = tabOrder.split(',').mapNotNull { it.toIntOrNull() }.filter { it in 0..4 }.distinct()
-        return order + (0..4).filter { it !in order }
+        val order = tabOrder.split(',').mapNotNull { it.toIntOrNull() }.filter { it in 0..5 }.distinct()
+        return order + (0..5).filter { it !in order }
     }
 
     // 정렬·필터

@@ -221,6 +221,13 @@ fun SettingsScreen(nav: NavController, onLogout: () -> Unit) {
                 ) { Settings.inlineVideo = it }
             }
             item { Toggle("플레이어 열면 바로 재생", null, Settings.autoPlayVideo) { Settings.autoPlayVideo = it } }
+            item {
+                Choice(
+                    "갤럭시 모션 포토", Settings.motionPhoto,
+                    listOf("자동 재생" to "auto", "버튼으로 재생" to "manual", "표시 안 함" to "off"),
+                ) { Settings.motionPhoto = it }
+                Hint("모션 포토는 사진을 열 때 원본을 한 번 확인해요. 버튼으로 재생은 사진 위쪽의 모션 버튼을 누르면 움직여요.")
+            }
             item { Toggle("반복 재생", null, Settings.loopVideo) { Settings.loopVideo = it } }
             item { Toggle("소리 끄고 시작", null, Settings.startMuted) { Settings.startMuted = it } }
 
