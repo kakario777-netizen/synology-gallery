@@ -31,11 +31,6 @@ jobs:
           mkdir -p out
           cp app/build/outputs/apk/release/app-release.apk out/SynoGallery-v0.1.${{ github.run_number }}.apk
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: SynoGallery-apk
-          path: out/*.apk
-
       - name: 릴리스 올리기
         uses: softprops/action-gh-release@v2
         with:
