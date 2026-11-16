@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.systemBarsIgnoringVisibility
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,6 +51,11 @@ import com.kakario.synogallery.ui.PlaceDetailScreen
 class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 앱을 켤 때 새 버전 확인 (최신이면 아무것도 안 띄움)
+        if (savedInstanceState == null) com.kakario.synogallery.update.Updater.get(this).check(quiet = true)
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.light(android.graphics.Color.WHITE, android.graphics.Color.WHITE),
@@ -94,6 +100,12 @@ class MainActivity : FragmentActivity() {
                     Box(Modifier.fillMaxSize()) {
                         AppNav()
                         if (AppLock.locked) LockScreen()
+                        else {
+                            // 새 버전 알림·받기·설치 창 (앱 어디서나)
+                            val updater = remember { com.kakario.synogallery.update.Updater.get(this@MainActivity) }
+                            val upState by updater.state.collectAsState()
+                            com.kakario.synogallery.ui.UpdateDialog(upState, updater)
+                        }
                     }
                 }
             }

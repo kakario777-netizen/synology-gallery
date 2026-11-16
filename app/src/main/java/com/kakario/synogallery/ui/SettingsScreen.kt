@@ -33,6 +33,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -313,6 +314,25 @@ fun SettingsScreen(nav: NavController, onLogout: () -> Unit) {
                     OutlinedButton(onClick = {
                         ask = Ask("로그아웃", "로그아웃할까요? 저장된 비밀번호도 지워져요.", "로그아웃", onLogout)
                     }) { Text("로그아웃", color = MaterialTheme.colorScheme.error) }
+                }
+            }
+            item { Section("앱 업데이트") }
+            item {
+                val updater = remember { com.kakario.synogallery.update.Updater.get(ctx) }
+                val upState by updater.state.collectAsState()
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("시놀 갤러리 빌드 #${updater.currentBuild}", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            if (upState is com.kakario.synogallery.update.Updater.State.Checking) "확인하는 중…"
+                            else "앱을 켤 때마다 새 버전을 자동으로 확인해요",
+                            color = Color.Gray, style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    OutlinedButton(onClick = { updater.check(quiet = false) }) { Text("업데이트 확인") }
                 }
             }
             item {
