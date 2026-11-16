@@ -92,6 +92,9 @@ object QuickConnect {
     private fun md5(s: String): String =
         MessageDigest.getInstance("MD5").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
 
+    /** 예전에 연결됐던 주소가 지금도 되는지 빠르게 확인 */
+    fun quickCheck(url: String): Boolean = check(url, "")
+
     private fun check(url: String, serverId: String): Boolean {
         return try {
             val r = Request.Builder().url("$url/webman/pingpong.cgi?action=cors&quickconnect=true").build()

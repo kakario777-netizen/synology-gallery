@@ -26,6 +26,14 @@ object Syno {
     var sid: String? = null
         private set
 
+    /** 로그인(또는 주소 변경)될 때마다 올라감 → 썸네일 주소를 다시 만들게 함 */
+    var sessionTick by androidx.compose.runtime.mutableIntStateOf(0)
+        private set
+
+    /** 앱 시작 때 뒤에서 돌리는 로그인 (끝날 때까지 다른 요청은 기다림) */
+    @Volatile
+    var loginTask: kotlinx.coroutines.Deferred<Unit>? = null
+
     /** 이번 실행 동안만 들고 있는 비밀번호 (세션 만료 시 재로그인용) */
     private var sessionPassword: String = ""
 
@@ -127,6 +135,7 @@ object Syno {
      * QuickConnect 접속 중 연결이 끊기면(와이파이↔LTE 전환 등) 주소를 다시 찾아서 재시도.
      */
     private suspend fun <T> call(block: suspend () -> T): T = withContext(Dispatchers.IO) {
+        loginTask?.let { t -> if (t.isActive) runCatching { t.await() } }
         try {
             block()
         } catch (e: Exception) {
@@ -165,15 +174,30 @@ object Syno {
         }
         val cached = resolvedBase
         if (!reResolve && cached != null && resolvedFor.equals(id, ignoreCase = true)) return cached
+        // 지난번에 연결됐던 주소부터 빠르게 확인 (보통 여기서 끝남)
+        if (!reResolve && Settings.lastBaseFor.equals(id, ignoreCase = true) && Settings.lastBase.isNotEmpty() &&
+            QuickConnect.quickCheck(Settings.lastBase)
+        ) {
+            applyResolved(id, Settings.lastBase, Settings.lastRoute, Settings.lastBaseInsecure)
+            return Settings.lastBase
+        }
         val r = QuickConnect.resolve(id)
-        resolvedBase = r.base
+        applyResolved(id, r.base, r.route, r.insecure)
+        Settings.lastBase = r.base
+        Settings.lastBaseFor = id
+        Settings.lastRoute = r.route
+        Settings.lastBaseInsecure = r.insecure
+        return r.base
+    }
+
+    private fun applyResolved(id: String, base: String, r: String, insecure: Boolean) {
+        resolvedBase = base
         resolvedFor = id
-        route = "QuickConnect · ${r.route}"
-        if (qcInsecure != r.insecure) {
-            qcInsecure = r.insecure
+        route = "QuickConnect · $r"
+        if (qcInsecure != insecure) {
+            qcInsecure = insecure
             rebuildClient()
         }
-        return r.base
     }
 
     private fun friendly(e: Exception): Exception = when (e) {
@@ -203,6 +227,7 @@ object Syno {
             try {
                 val data = post(target, params, withSid = false)
                 sid = data.optString("sid").ifEmpty { throw SynoException(-1, "로그인 응답에 세션이 없어요.") }
+                sessionTick++
                 sessionPassword = password
                 return
             } catch (e: SynoException) {
@@ -262,6 +287,18 @@ object Syno {
         }
     }
 
+    /** 앱 시작 때 자동 로그인: 지난 주소를 먼저 쓰고, 사진 권한 검사는 건너뜀 */
+    suspend fun quickLogin() = withContext(Dispatchers.IO) {
+        try {
+            doLogin(Settings.host, Settings.account, Settings.password, null, reResolve = false)
+        } catch (e: Exception) {
+            // 지난 주소가 안 되면 처음부터 다시 찾기
+            if (QuickConnect.extractId(Settings.host) != null && isNetworkError(e)) {
+                doLogin(Settings.host, Settings.account, Settings.password, null, reResolve = true)
+            } else throw friendly(e)
+        }
+    }
+
     suspend fun login(host: String, account: String, password: String, otp: String?) =
         withContext(Dispatchers.IO) {
             try {
@@ -283,6 +320,29 @@ object Syno {
     // ───────────────── 목록 ─────────────────
 
     private val itemExtras = JSONArray(listOf("thumbnail", "resolution", "video_meta", "tag", "gps")).toString()
+
+    /** 목록 전체 개수 (캐시가 최신인지 확인용) */
+    suspend fun countItems(source: Source): Int = call {
+        val p = mutableMapOf("api" to "$prefix.Browse.Item", "version" to "1", "method" to "count")
+        when (source) {
+            is AlbumSource -> p["album_id"] = "${source.id}"
+            is FolderSource -> p["folder_id"] = "${source.id}"
+            is TagSource -> p["general_tag_id"] = "${source.id}"
+            is PlaceSource -> p["geocoding_id"] = "${source.id}"
+            AllSource, FavSource, VideosSource -> {}
+        }
+        val filter = if (source is VideosSource) "video" else Settings.mediaFilter
+        val data = if (filter != "all") {
+            try {
+                post(base, p + ("type" to q(filter)))
+            } catch (e: SynoException) {
+                if (e.code in listOf(106, 107, 119)) throw e
+                post(base, p)
+            }
+        } else post(base, p)
+        if (!data.has("count")) throw SynoException(-1, "개수를 알 수 없어요")
+        data.optInt("count")
+    }
 
     suspend fun listItems(source: Source, offset: Int, limit: Int): List<Item> = call {
         val p = mutableMapOf(

@@ -105,7 +105,6 @@ import com.kakario.synogallery.Syno
 import com.kakario.synogallery.TagSource
 import com.kakario.synogallery.ViewerStore
 import com.kakario.synogallery.VideosSource
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -118,7 +117,7 @@ object SelectionMode {
     var active by mutableStateOf(false)
 }
 
-class GalleryViewModel(private val source: Source) : ViewModel() {
+class GalleryViewModel(private val source: Source, private val cacheKey: String) : ViewModel() {
     val items = mutableStateListOf<Item>()
     var loading by mutableStateOf(false)
         private set
@@ -126,8 +125,14 @@ class GalleryViewModel(private val source: Source) : ViewModel() {
         private set
     var end by mutableStateOf(false)
         private set
+
+    /** 저장해 둔 목록을 보여주는 중, 뒤에서 최신인지 확인 중 */
+    var refreshing by mutableStateOf(false)
+        private set
     private var rawOffset = 0
-    private var similarJob: Job? = null
+
+    var sortVersion by mutableStateOf(0)
+        private set
 
     /** 선택된 사진 id */
     val selected = mutableStateMapOf<Long, Unit>()
@@ -137,10 +142,29 @@ class GalleryViewModel(private val source: Source) : ViewModel() {
             items.addAll(Favorites.list())
             end = true
             ensureSimilar()
-        } else loadAll()
+        } else {
+            viewModelScope.launch {
+                // 1) 폰에 저장해 둔 목록을 먼저 바로 보여줌
+                val cached = com.kakario.synogallery.ItemCache.load(cacheKey)
+                if (cached != null && cached.items.isNotEmpty()) {
+                    items.addAll(cached.items)
+                    end = true
+                    ensureSimilar()
+                    // 2) 뒤에서 바뀐 게 있는지만 가볍게 확인
+                    refresh(cached)
+                } else loadAll()
+            }
+        }
     }
 
-    /** 월별 이동 스크롤이 전체 기간을 다룰 수 있게 끝까지 이어서 불러옴 */
+    private fun filterPage(page: List<Item>) =
+        when (if (source is VideosSource) "video" else Settings.mediaFilter) {
+            "photo" -> page.filter { !it.isVideo }
+            "video" -> page.filter { it.isVideo }
+            else -> page
+        }
+
+    /** 처음: 끝까지 이어서 불러오고 폰에 저장 */
     private fun loadAll() {
         if (loading || end) return
         loading = true
@@ -150,16 +174,11 @@ class GalleryViewModel(private val source: Source) : ViewModel() {
                 while (!end) {
                     val page = Syno.listItems(source, rawOffset, PAGE)
                     rawOffset += page.size
-                    items.addAll(
-                        when (if (source is VideosSource) "video" else Settings.mediaFilter) {
-                            "photo" -> page.filter { !it.isVideo }
-                            "video" -> page.filter { it.isVideo }
-                            else -> page
-                        }
-                    )
+                    items.addAll(filterPage(page))
                     if (page.size < PAGE) end = true
                     ensureSimilar()
                 }
+                com.kakario.synogallery.ItemCache.save(cacheKey, rawOffset, items.toList())
             } catch (e: Exception) {
                 error = e.message ?: "불러오지 못했어요."
             } finally {
@@ -168,25 +187,56 @@ class GalleryViewModel(private val source: Source) : ViewModel() {
         }
     }
 
+    /** 개수와 맨 앞 사진들이 같으면 그대로, 다르면 새로 받아서 한 번에 바꿈 */
+    private suspend fun refresh(c: com.kakario.synogallery.ItemCache.Cached) {
+        refreshing = true
+        try {
+            val count = try {
+                Syno.countItems(source)
+            } catch (_: Exception) {
+                -1
+            }
+            val first = filterPage(Syno.listItems(source, 0, 60))
+            val head = c.items.take(first.size)
+            val same = count >= 0 && count == c.serverCount && first.size == head.size &&
+                first.indices.all { first[it].id == head[it].id && first[it].cacheKey == head[it].cacheKey }
+            if (same) return
+            val fresh = ArrayList<Item>(maxOf(count, 0))
+            var off = 0
+            while (true) {
+                val page = Syno.listItems(source, off, PAGE)
+                off += page.size
+                fresh += filterPage(page)
+                if (page.size < PAGE) break
+            }
+            items.clear()
+            items.addAll(fresh)
+            sortVersion++
+            com.kakario.synogallery.ItemCache.save(cacheKey, off, fresh)
+            ensureSimilar()
+        } catch (_: Exception) {
+            // 연결이 안 되면 저장해 둔 목록 그대로 보여줌
+        } finally {
+            refreshing = false
+        }
+    }
+
+    /** 직접 새로 고침 */
+    fun forceRefresh() {
+        if (refreshing || loading) return
+        viewModelScope.launch { refresh(com.kakario.synogallery.ItemCache.Cached(-2, emptyList())) }
+    }
+
     fun retry() {
         error = null
         loadAll()
     }
 
     fun ensureSimilar() {
-        if (!Settings.groupSimilar || Settings.sortBy != "takentime") return
-        if (similarJob?.isActive == true) return
-        similarJob = viewModelScope.launch {
-            while (true) {
-                val c = Similar.candidates(items.toList())
-                if (c.isEmpty()) break
-                Similar.compute(c)
-            }
-        }
+        if (!Settings.groupSimilar || Settings.sortBy != "takentime" || items.isEmpty()) return
+        Similar.ensure(cacheKey, items.toList())
     }
 
-    var sortVersion by mutableStateOf(0)
-        private set
 
     /** 모든 동영상 안에서 정렬 (이름·크기·길이·날짜) */
     fun sortLocal(mode: String) {
@@ -342,7 +392,7 @@ fun GalleryGrid(
     header: (LazyGridScope.() -> Unit)? = null,
 ) {
     val gKey = galleryKey(source)
-    val vm: GalleryViewModel = viewModel(key = gKey) { GalleryViewModel(source) }
+    val vm: GalleryViewModel = viewModel(key = gKey) { GalleryViewModel(source, gKey) }
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
@@ -358,7 +408,7 @@ fun GalleryGrid(
     val grouping = if (isVideos && !videoSort.startsWith("date")) "none" else Settings.grouping
     LaunchedEffect(videoSort, vm.end, isVideos) { if (isVideos && vm.end) vm.sortLocal(videoSort) }
 
-    LaunchedEffect(stack) { if (stack) vm.ensureSimilar() }
+    LaunchedEffect(stack, Syno.sessionTick) { if (stack) vm.ensureSimilar() }
 
     val rows = remember(vm.items.size, vm.sortVersion, grouping, stack, if (stack) simVersion else 0, simLevel) {
         val list = vm.items.toList()
@@ -536,10 +586,17 @@ fun GalleryGrid(
                     )
                     source is FavSource -> Box(Modifier.padding(bottom = 90.dp))
                     else -> Text(
-                        if (vm.loading) "${vm.items.size}개 불러오는 중…" else "${vm.items.size}개",
+                        when {
+                            vm.loading -> "${vm.items.size}개 불러오는 중…"
+                            vm.refreshing -> "${vm.items.size}개 · 새 사진 확인 중…"
+                            else -> "${vm.items.size}개 · 눌러서 새로 고침"
+                        },
                         color = Palette.sub,
                         style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 90.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { vm.forceRefresh() }
+                            .padding(top = 20.dp, bottom = 90.dp),
                         textAlign = TextAlign.Center,
                     )
                 }
@@ -789,7 +846,7 @@ fun Thumb(
     val ctx = LocalContext.current
     val size = Settings.thumbSize
     val square = Settings.squareThumbs
-    val req = remember(item.thumbUnitId, item.cacheKey, size) {
+    val req = remember(item.thumbUnitId, item.cacheKey, size, Syno.sessionTick) {
         val key = Syno.thumbKey(item.thumbUnitId, item.cacheKey, size)
         ImageRequest.Builder(ctx)
             .data(Syno.thumbUrl(item.thumbUnitId, item.cacheKey, size))

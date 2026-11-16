@@ -191,7 +191,7 @@ private fun CoverCardView(
             if (c.unitId != 0L) {
                 val key = Syno.thumbKey(c.unitId, c.cacheKey, "m")
                 AsyncImage(
-                    model = remember(c.id, c.unitId) {
+                    model = remember(c.id, c.unitId, Syno.sessionTick) {
                         ImageRequest.Builder(ctx)
                             .data(Syno.thumbUrl(c.unitId, c.cacheKey, "m", team = team))
                             .memoryCacheKey(key).diskCacheKey(key).build()

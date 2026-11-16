@@ -44,6 +44,12 @@ object Settings {
     var allVideosAlbum by P("allVideosAlbum", true) // 앨범 탭 맨 앞 '모든 동영상'
     var videoSort by P("videoSort", "date_desc")  // date_desc / date_asc / name / size / length
 
+    // 마지막으로 연결된 실제 주소 (QuickConnect 다시 찾는 시간 절약)
+    var lastBase by P("lastBase", "")
+    var lastBaseFor by P("lastBaseFor", "")
+    var lastBaseInsecure by P("lastBaseInsecure", false)
+    var lastRoute by P("lastRoute", "")
+
     // 잠금
     var lockPattern by P("lockPattern", "")        // 패턴 해시 (비어 있으면 잠금 꺼짐)
     var lockBiometric by P("lockBiometric", true)

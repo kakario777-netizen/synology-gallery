@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.systemBarsIgnoringVisibility
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -27,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import kotlinx.coroutines.async
 import androidx.compose.ui.graphics.compositeOver
 import androidx.fragment.app.FragmentActivity
 import com.kakario.synogallery.ui.AppLock
@@ -121,12 +123,21 @@ fun readableAccent(c: Color, darkBg: Boolean): Color {
 
 /** 상태바(시계)와 아래 내비게이션 바를 남겨두고 그 사이에만 화면을 그림 */
 @Composable
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 fun Framed(content: @Composable () -> Unit) {
+    // 사진 보기에서 바를 숨겼다 돌아와도 항상 다시 보이게
+    val view = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        val w = (view.context as? android.app.Activity)?.window ?: return@LaunchedEffect
+        androidx.core.view.WindowCompat.getInsetsController(w, view)
+            .show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+    }
     Box(
         Modifier
             .fillMaxSize()
             .background(Palette.bg)
-            .windowInsetsPadding(WindowInsets.systemBars)
+            // 바가 잠깐 숨겨져 있어도 그 자리는 늘 비워 둠 → 시계·내비바를 침범하지 않음
+            .windowInsetsPadding(WindowInsets.systemBarsIgnoringVisibility)
     ) { content() }
 }
 
@@ -151,15 +162,32 @@ fun AppNav() {
     val nav = rememberNavController()
     var start by remember { mutableStateOf<String?>(null) }
 
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(Unit) {
-        start = if (Settings.autoLogin && Settings.host.isNotBlank() && Settings.password.isNotEmpty()) {
-            try {
-                Syno.login(Settings.host, Settings.account, Settings.password, null)
-                "home"
-            } catch (e: Exception) {
-                "login"
+        val auto = Settings.autoLogin && Settings.host.isNotBlank() && Settings.password.isNotEmpty()
+        if (!auto) {
+            start = "login"
+            return@LaunchedEffect
+        }
+        // 저장해 둔 사진 목록으로 바로 화면을 띄우고, 로그인은 뒤에서 (지문 인식하는 동안 같이 진행)
+        val task = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).async { Syno.quickLogin() }
+        Syno.loginTask = task
+        start = "home"
+        try {
+            task.await()
+        } catch (e: Exception) {
+            val authFail = e is Syno.SynoException && e.code in listOf(400, 401, 402, 403, 404, 105)
+            if (authFail) {
+                android.widget.Toast.makeText(ctx, e.message ?: "다시 로그인해 주세요", android.widget.Toast.LENGTH_LONG).show()
+                try {
+                    nav.navigate("login") { popUpTo(nav.graph.id) { inclusive = true } }
+                } catch (_: Exception) {
+                    start = "login"
+                }
+            } else {
+                android.widget.Toast.makeText(ctx, "NAS에 연결하지 못했어요. 저장된 목록을 보여줘요.", android.widget.Toast.LENGTH_LONG).show()
             }
-        } else "login"
+        }
     }
 
     val s = start

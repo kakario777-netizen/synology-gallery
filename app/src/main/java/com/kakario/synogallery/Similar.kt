@@ -11,7 +11,11 @@ import coil.imageLoader
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import coil.request.SuccessResult
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -63,6 +67,12 @@ object Similar {
                 // 예전 형식(id_cacheKey)도 사진 id만 떼어서 그대로 씀
                 if (i > 0) line.substring(i + 1).toLongOrNull()?.let { hashes[line.substring(0, i).substringBefore('_')] = it }
             }
+            // 예전 버전은 통신 오류로 못 받은 사진도 '실패'로 영구 기록해서 묶음이 빠졌음 → 한 번 초기화
+            val v2 = File(ctx.filesDir, "similar_v2")
+            if (!v2.exists()) {
+                failFile.delete()
+                v2.createNewFile()
+            }
             if (failFile.exists()) failFile.forEachLine { if (it.isNotBlank()) failed += it.trim() }
         } catch (_: Exception) {
         }
@@ -108,42 +118,75 @@ object Similar {
         return out
     }
 
-    suspend fun compute(items: List<Item>) = withContext(Dispatchers.IO) {
+    // ─── 앱 전체에서 한 번만 도는 분석 작업 (화면을 나가도 계속) ───
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val lists = ConcurrentHashMap<String, List<Item>>()
+    @Volatile private var job: Job? = null
+
+    /** 이 목록도 분석 대상에 넣고, 안 돌고 있으면 시작 */
+    fun ensure(key: String, items: List<Item>) {
+        lists[key] = items
+        if (job?.isActive == true || Syno.sid == null) return
+        job = scope.launch {
+            while (true) {
+                val c = lists.values.flatMap { candidates(it) }.distinctBy { it.id }
+                if (c.isEmpty()) break
+                if (!compute(c)) break   // 통신이 안 되면 멈췄다가 다음 기회(로그인·재접속)에 이어서
+            }
+            pending = 0
+        }
+    }
+
+    private sealed interface Res
+    private data class Ok(val h: Long) : Res
+    private data object Broken : Res     // 그림이 깨짐 → 다시 시도해도 소용없음
+    private data object NoNet : Res      // 통신 문제 → 나중에 다시
+
+    /** @return false면 통신 문제로 중단 */
+    private suspend fun compute(items: List<Item>): Boolean = withContext(Dispatchers.IO) {
         pending = items.size
         val gate = Semaphore(4)
         val lines = StringBuilder()
         var done = 0
-        coroutineScope {
-            items.chunked(24).forEach { chunk ->
+        for (chunk in items.chunked(24)) {
+            val results = coroutineScope {
                 chunk.map { item ->
                     async {
                         gate.withPermit {
-                            val h = try {
+                            val r = try {
                                 hashOf(item)
                             } catch (_: Exception) {
-                                null
+                                NoNet
                             }
                             val k = key(item)
-                            if (h != null) {
-                                hashes[k] = h
-                                synchronized(lines) { lines.append(k).append(',').append(h).append('\n') }
-                            } else {
-                                failed += k
-                                try {
-                                    synchronized(failFile) { failFile.appendText(k + "\n") }
-                                } catch (_: Exception) {
+                            when (r) {
+                                is Ok -> {
+                                    hashes[k] = r.h
+                                    synchronized(lines) { lines.append(k).append(',').append(r.h).append('\n') }
                                 }
+                                else -> {}
                             }
+                            k to r
                         }
                     }
                 }.awaitAll()
-                done += chunk.size
-                pending = (items.size - done).coerceAtLeast(0)
-                flush(lines)
-                version++
+            }
+            done += chunk.size
+            pending = (items.size - done).coerceAtLeast(0)
+            flush(lines)
+            version++
+            val bad = results.count { it.second !is Ok }
+            // 한 묶음에서 절반 넘게 실패하면 그림 문제가 아니라 연결(로그인 만료 등) 문제 → 기록하지 않고 멈춤
+            if (bad * 2 > results.size) return@withContext false
+            results.filter { it.second == Broken }.forEach { (k, _) ->
+                failed += k
+                try {
+                    synchronized(failFile) { failFile.appendText(k + "\n") }
+                } catch (_: Exception) {
+                }
             }
         }
-        pending = 0
+        true
     }
 
     private fun flush(sb: StringBuilder) {
@@ -155,7 +198,7 @@ object Similar {
         }
     }
 
-    private suspend fun hashOf(item: Item): Long? {
+    private suspend fun hashOf(item: Item): Res {
         val k = Syno.thumbKey(item.thumbUnitId, item.cacheKey, "sm")
         val req = ImageRequest.Builder(ctx)
             .data(Syno.thumbUrl(item.thumbUnitId, item.cacheKey, "sm"))
@@ -164,8 +207,12 @@ object Similar {
             .size(72, 72)
             .allowHardware(false)
             .build()
-        val res = ctx.imageLoader.execute(req) as? SuccessResult ?: return null
-        val bmp = (res.drawable as? BitmapDrawable)?.bitmap ?: return null
+        val res = ctx.imageLoader.execute(req)
+        if (res is coil.request.ErrorResult) {
+            val t = res.throwable
+            return if (t is java.io.IOException || t is coil.network.HttpException) NoNet else Broken
+        }
+        val bmp = ((res as SuccessResult).drawable as? BitmapDrawable)?.bitmap ?: return Broken
         val small = Bitmap.createScaledBitmap(bmp, 9, 8, true)
         var h = 0L
         var bit = 0
@@ -176,7 +223,7 @@ object Similar {
             }
         }
         if (small != bmp) small.recycle()
-        return h
+        return Ok(h)
     }
 
     private fun lum(c: Int) = Color.red(c) * 299 + Color.green(c) * 587 + Color.blue(c) * 114
