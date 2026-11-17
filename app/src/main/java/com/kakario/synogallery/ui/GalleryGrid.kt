@@ -92,6 +92,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
+import coil.imageLoader
 import coil.request.ImageRequest
 import com.kakario.synogallery.AlbumSource
 import com.kakario.synogallery.FavSource
@@ -111,6 +112,9 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 private const val PAGE = 500
+
+/** 목록 썸네일을 이 크기로 줄여서 메모리에 둠 → 더 많이 기억해서 스크롤할 때 바로 보임 */
+const val THUMB_PX = 360
 
 /** 사진을 여러 장 고르는 중인지 (메인 화면 좌우 넘김을 막을 때 씀) */
 object SelectionMode {
@@ -389,6 +393,13 @@ private fun Modifier.longPressDrag(
     }
 }
 
+/** 목록 칸 번호 → 사진 줄 번호 (위에 폴더·안내 줄이 끼어 있으면 그만큼 밀림) */
+private fun currentKeyToRowIndex(i: Int, first: Int, state: LazyGridState, keyToRow: Map<Any, Int>): Int? {
+    val info = state.layoutInfo.visibleItemsInfo.firstOrNull() ?: return null
+    val base = keyToRow[info.key] ?: return null
+    return base + (i - info.index)
+}
+
 @Composable
 fun GalleryGrid(
     source: Source,
@@ -423,6 +434,34 @@ fun GalleryGrid(
     val state = rememberLazyGridState()
     val currentRows by rememberUpdatedState(rows)
     val currentKeyToRow by rememberUpdatedState(keyToRow)
+
+    // 스크롤하는 방향으로 앞쪽 두세 화면 분량 썸네일을 미리 불러 둠 → 한 박자 늦게 뜨는 것 방지
+    LaunchedEffect(state, vm) {
+        var lastFirst = 0
+        snapshotFlow { state.firstVisibleItemIndex to state.layoutInfo.visibleItemsInfo.size }
+            .collect { (first, count) ->
+                val down = first >= lastFirst
+                lastFirst = first
+                val span = (count * 2.5).toInt().coerceAtLeast(30)
+                val range = if (down) (first + count) until (first + count + span) else (first - span).coerceAtLeast(0) until first
+                val loader = ctx.imageLoader
+                val size = Settings.thumbSize
+                for (i in range) {
+                    val r = currentRows.getOrNull(currentKeyToRowIndex(i, first, state, currentKeyToRow) ?: i) as? CellRow ?: continue
+                    val item = vm.items.getOrNull(r.index) ?: continue
+                    val key = Syno.thumbKey(item.thumbUnitId, item.cacheKey, size)
+                    if (loader.memoryCache?.get(coil.memory.MemoryCache.Key(key)) != null) continue
+                    loader.enqueue(
+                        ImageRequest.Builder(ctx)
+                            .data(com.kakario.synogallery.thumbData(item, size))
+                            .memoryCacheKey(key)
+                            .diskCacheKey(key)
+                            .size(THUMB_PX)
+                            .build()
+                    )
+                }
+            }
+    }
 
     // 뷰어에서 돌아오면 마지막으로 본 사진 근처로
     LaunchedEffect(Unit) {
@@ -868,6 +907,8 @@ fun Thumb(
             .data(com.kakario.synogallery.thumbData(item, size))
             .memoryCacheKey(key)
             .diskCacheKey(key)
+            .crossfade(false)
+            .size(THUMB_PX)
             .build()
     }
     val fav = Favorites.version.let { Favorites.isFav(item.id) }

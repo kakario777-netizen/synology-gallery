@@ -32,7 +32,7 @@ class App : Application(), ImageLoaderFactory {
             }
         }
         .components { add(LocalThumbFetcher.Factory()) }
-        .memoryCache { MemoryCache.Builder(this).maxSizePercent(0.25).build() }
+        .memoryCache { MemoryCache.Builder(this).maxSizePercent(0.35).build() }
         .diskCache {
             DiskCache.Builder()
                 .directory(cacheDir.resolve("images"))
