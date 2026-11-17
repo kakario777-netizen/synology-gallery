@@ -71,7 +71,7 @@ object ThumbPrefetch {
         if (items.size > latest.size) latest = items
         if (!Settings.prefetchThumbs || job?.isActive == true || Syno.sid == null) return
         job = scope.launch {
-            val todo = latest.filter { it.id !in colors }.sortedByDescending { it.time }
+            val todo = latest.filter { !colors.containsKey(it.id) }.sortedByDescending { it.time }
             pending = todo.size
             if (todo.isEmpty()) return@launch
             AppLog.add("썸네일", "전체 썸네일 미리 받기 시작 (${todo.size}장)")
