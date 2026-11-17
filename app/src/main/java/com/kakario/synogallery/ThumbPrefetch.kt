@@ -29,6 +29,26 @@ object BgStatus {
     var checking by mutableIntStateOf(0)
 }
 
+/** 썸네일 받기 일시정지·재개 */
+object ThumbControl {
+    val paused get() = Settings.thumbsPaused
+
+    fun pause() {
+        Settings.thumbsPaused = true
+        AppLog.add("썸네일", "일시정지")
+    }
+
+    fun resume(ctx: Context) {
+        Settings.thumbsPaused = false
+        AppLog.add("썸네일", "재개")
+        ThumbService.start(ctx)
+    }
+
+    suspend fun waitResume() {
+        while (Settings.thumbsPaused) delay(500)
+    }
+}
+
 /** 화면이 바쁜지 (스크롤 중이면 뒤 작업은 잠깐 쉼) */
 object UiBusy {
     @Volatile private var lastActive = 0L
@@ -80,6 +100,12 @@ object ThumbPrefetch {
     var pending by mutableIntStateOf(0)
         private set
 
+    /** 이번에 받을 전체 수 (알림 진행 막대용) */
+    var total by mutableIntStateOf(0)
+        private set
+
+    val running get() = job?.isActive == true
+
     /** 몇 장 받을 때마다 올라감 → 아직 비어 있는 칸이 폰에 받아진 썸네일로 바로 다시 그려짐 */
     var version by mutableIntStateOf(0)
         private set
@@ -109,7 +135,9 @@ object ThumbPrefetch {
         job = scope.launch {
             val todo = latest.filter { !colors.containsKey(it.id) }.sortedByDescending { it.time }
             pending = todo.size
+            total = todo.size
             if (todo.isEmpty()) return@launch
+            if (Settings.thumbsInBackground) ThumbService.start(ctx)
             AppLog.add("썸네일", "전체 썸네일 미리 받기 시작 (${todo.size}장)")
             val size = Settings.thumbSize
             val lines = StringBuilder()
@@ -117,6 +145,7 @@ object ThumbPrefetch {
             var wait = 15_000L
             for (chunk in todo.chunked(6)) {
                 if (!Settings.prefetchThumbs) break
+                ThumbControl.waitResume()
                 UiBusy.waitIdle()
                 val ok = coroutineScope {
                     chunk.map { item -> async { fetch(item, size)?.let { item.id to it } } }.awaitAll()

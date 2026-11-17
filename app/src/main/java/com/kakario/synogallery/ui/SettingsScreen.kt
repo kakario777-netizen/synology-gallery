@@ -161,7 +161,25 @@ fun SettingsScreen(nav: NavController, onLogout: () -> Unit) {
                     "모든 사진의 썸네일을 최신 사진부터 폰에 받아 둬요. 다 받으면 스크롤할 때 회색 칸 없이 바로 떠요",
                     Settings.prefetchThumbs,
                 ) { Settings.prefetchThumbs = it }
-                if (com.kakario.synogallery.ThumbPrefetch.pending > 0) Hint("받는 중… 남은 ${com.kakario.synogallery.ThumbPrefetch.pending}장")
+                if (com.kakario.synogallery.ThumbPrefetch.pending > 0) Hint(
+                    (if (Settings.thumbsPaused) "일시정지됨 · " else "받는 중… ") + "남은 ${com.kakario.synogallery.ThumbPrefetch.pending}장"
+                )
+            }
+            item {
+                Toggle(
+                    "화면이 꺼져도 계속 받기",
+                    "알림창에 진행 상황을 띄워 두고 앱을 나가거나 화면을 꺼도 계속 받아요. 알림에서 일시정지·재개할 수 있어요",
+                    Settings.thumbsInBackground,
+                ) { Settings.thumbsInBackground = it }
+            }
+            item {
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (Settings.thumbsPaused) {
+                        OutlinedButton(onClick = { com.kakario.synogallery.ThumbControl.resume(ctx) }) { Text("썸네일 받기 재개") }
+                    } else {
+                        OutlinedButton(onClick = { com.kakario.synogallery.ThumbControl.pause() }) { Text("썸네일 받기 일시정지") }
+                    }
+                }
             }
             item {
                 Toggle(

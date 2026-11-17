@@ -44,6 +44,8 @@ object LocalThumbs {
     var pending by androidx.compose.runtime.mutableIntStateOf(0)
         private set
 
+    val running get() = job?.isActive == true
+
     private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
     @Volatile private var job: kotlinx.coroutines.Job? = null
     private val queue = ConcurrentHashMap<Long, Item>()
@@ -58,6 +60,7 @@ object LocalThumbs {
             AppLog.add("썸네일", "NAS에 없는 썸네일 만들기 시작 (${queue.size}장)")
             var fails = 0
             while (Settings.autoLocalThumbs) {
+                ThumbControl.waitResume()
                 UiBusy.waitIdle()
                 // 최신 사진부터
                 val next = queue.values.maxByOrNull { it.time } ?: break

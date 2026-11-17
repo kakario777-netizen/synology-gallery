@@ -766,7 +766,7 @@ fun BackgroundStatusBar() {
         if (com.kakario.synogallery.BgStatus.connecting) add("NAS 연결 중")
         if (com.kakario.synogallery.BgStatus.checking > 0) add("새 사진 확인 중")
         val pre = com.kakario.synogallery.ThumbPrefetch.pending
-        if (pre > 0) add("썸네일 받는 중 ${"%,d".format(pre)}")
+        if (pre > 0) add((if (Settings.thumbsPaused) "썸네일 일시정지 " else "썸네일 받는 중 ") + "%,d".format(pre))
         val loc = com.kakario.synogallery.LocalThumbs.pending
         if (loc > 0) add("썸네일 만드는 중 ${"%,d".format(loc)}")
         val sim = com.kakario.synogallery.Similar.pending

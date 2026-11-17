@@ -42,6 +42,8 @@ object Settings {
     var inlineVideo by P("inlineVideo", false)    // 뷰어에서 영상 바로 재생
     var motionPhoto by P("motionPhoto", "manual")   // auto / manual / off (갤럭시 모션 포토)
     var autoLocalThumbs by P("autoLocalThumbs", true) // NAS에 없는 썸네일을 앱이 미리 전부 만들기
+    var thumbsPaused by P("thumbsPaused", false)     // 썸네일 받기 일시정지
+    var thumbsInBackground by P("thumbsInBackground", true) // 알림을 띄워 화면이 꺼져도 계속 받기
     var prefetchThumbs by P("prefetchThumbs", true)  // 전체 썸네일 미리 받기
     var savedSid by P("savedSid", "")                // 로그인 기억 (앱을 다시 켜면 바로)
     var savedSidFor by P("savedSidFor", "")
