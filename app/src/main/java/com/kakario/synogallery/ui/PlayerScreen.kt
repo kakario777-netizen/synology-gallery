@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.kakario.synogallery.ui
 
 import android.app.Activity
@@ -20,10 +22,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBarsIgnoringVisibility
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -347,7 +351,7 @@ fun PlayerScreen(index: Int, nav: NavController) {
                     Modifier
                         .fillMaxWidth()
                         .background(Color(0x88000000))
-                        .statusBarsPadding()
+                        .windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)
                         .padding(4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -411,7 +415,7 @@ fun PlayerScreen(index: Int, nav: NavController) {
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .background(Color(0x88000000))
-                        .navigationBarsPadding()
+                        .windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility)
                         .padding(horizontal = 14.dp, vertical = 8.dp)
                 ) {
                     SeekBar(player, st)
@@ -523,7 +527,7 @@ fun InlineVideo(
                 Modifier
                     .fillMaxWidth()
                     .background(Color(0x77000000))
-                    .navigationBarsPadding()
+                    .windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility)
                     .padding(horizontal = 6.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

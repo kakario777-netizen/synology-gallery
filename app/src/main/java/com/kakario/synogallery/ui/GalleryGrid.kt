@@ -533,7 +533,8 @@ fun GalleryGrid(
             if (stack && Similar.pending > 0) {
                 item(span = { GridItemSpan(maxLineSpan) }, key = "similar_progress") {
                     Text(
-                        "비슷한 사진 찾는 중… 남은 ${Similar.pending}장 (처음 한 번만)",
+                        if (Similar.waiting) "비슷한 사진 찾는 중… 남은 ${Similar.pending}장 (연결 기다리는 중, 곧 이어서 해요)"
+                        else "비슷한 사진 찾는 중… 남은 ${Similar.pending}장 (처음 한 번만)",
                         color = Palette.sub, style = MaterialTheme.typography.labelMedium,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                     )

@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.kakario.synogallery.ui
 
 import androidx.activity.compose.BackHandler
@@ -38,10 +40,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBarsIgnoringVisibility
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -227,7 +231,7 @@ fun ViewerScreen(start: Int, nav: NavController) {
             // 묶음 사진: 아래 띠에서 안쪽 사진 고르기 (구글 포토 방식)
             if (curStack.size > 1 && up == 0f && down == 0f) {
                 Column(
-                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding(),
+                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Text(
@@ -261,7 +265,7 @@ fun ViewerScreen(start: Int, nav: NavController) {
                     Modifier
                         .fillMaxWidth()
                         .background(Brush.verticalGradient(listOf(Color(0xDD000000), Color(0x66000000), Color.Transparent)))
-                        .statusBarsPadding()
+                        .windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)
                         .padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 10.dp),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -439,7 +443,7 @@ private fun DetailsPanel(item: Item, tagsVersion: Int, onTag: () -> Unit, onAlbu
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .navigationBarsPadding()
+            .windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility)
             .padding(start = 22.dp, end = 22.dp, top = 10.dp, bottom = 16.dp)
     ) {
         Box(
@@ -597,7 +601,7 @@ private fun VideoPoster(item: Item, onTap: () -> Unit, onPlay: () -> Unit) {
             Icon(Icons.Filled.PlayArrow, "재생", tint = Color.White, modifier = Modifier.size(48.dp))
         }
         if (item.duration > 0) {
-            Badge(formatDuration(item.duration), Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 28.dp))
+            Badge(formatDuration(item.duration), Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility).padding(bottom = 28.dp))
         }
     }
 }

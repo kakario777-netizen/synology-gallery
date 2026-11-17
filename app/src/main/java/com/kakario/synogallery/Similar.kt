@@ -16,6 +16,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import androidx.compose.runtime.mutableStateOf
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -52,6 +54,13 @@ object Similar {
     /** 새 결과가 생길 때마다 올라감 → 화면이 다시 묶음 */
     var version by mutableIntStateOf(0)
         private set
+
+    /** 연결 문제로 잠깐 쉬는 중 (화면 표시용) */
+    var waiting by mutableStateOf(false)
+        private set
+
+    /** 같은 사진이 계속 실패한 횟수 — 3번 넘으면 이번 실행에서는 건너뜀 (멈춤 방지) */
+    private val tries = ConcurrentHashMap<String, Int>()
 
     /** 아직 분석할 사진 수 (화면 표시용) */
     var pending by mutableIntStateOf(0)
@@ -128,10 +137,21 @@ object Similar {
         lists[key] = items
         if (job?.isActive == true || Syno.sid == null) return
         job = scope.launch {
+            var wait = 15_000L
             while (true) {
                 val c = lists.values.flatMap { candidates(it) }.distinctBy { it.id }
                 if (c.isEmpty()) break
-                if (!compute(c)) break   // 통신이 안 되면 멈췄다가 다음 기회(로그인·재접속)에 이어서
+                if (compute(c)) {
+                    wait = 15_000L
+                    continue
+                }
+                // 통신이 끊겼거나 로그인이 만료됨 → 멈추지 않고 잠깐 쉬었다가 이어서
+                waiting = true
+                // 가벼운 요청 한 번: 로그인이 만료됐으면 여기서 자동으로 다시 로그인됨
+                runCatching { Syno.countItems(AllSource) }
+                delay(wait)
+                wait = (wait * 2).coerceAtMost(300_000L)
+                waiting = false
             }
             pending = 0
         }
@@ -164,7 +184,11 @@ object Similar {
                                     hashes[k] = r.h
                                     synchronized(lines) { lines.append(k).append(',').append(r.h).append('\n') }
                                 }
-                                else -> {}
+                                else -> {
+                                    val n = (tries[k] ?: 0) + 1
+                                    tries[k] = n
+                                    if (n >= 3) failed += k   // 저장은 안 함: 다음 실행 때 다시 시도
+                                }
                             }
                             k to r
                         }
