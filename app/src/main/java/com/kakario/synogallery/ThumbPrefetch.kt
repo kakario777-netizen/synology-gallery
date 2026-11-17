@@ -80,6 +80,10 @@ object ThumbPrefetch {
     var pending by mutableIntStateOf(0)
         private set
 
+    /** 몇 장 받을 때마다 올라감 → 아직 비어 있는 칸이 폰에 받아진 썸네일로 바로 다시 그려짐 */
+    var version by mutableIntStateOf(0)
+        private set
+
     fun init(c: Context) {
         ctx = c.applicationContext
         colorFile = File(ctx.filesDir, "thumb_colors.txt")
@@ -124,6 +128,7 @@ object ThumbPrefetch {
                 }
                 done += chunk.size
                 pending = (todo.size - done).coerceAtLeast(0)
+                if (got.isNotEmpty()) version++
                 if (lines.length > 4000) flush(lines)
                 if (got.size * 2 < chunk.size) {
                     // 절반 넘게 실패 → 연결 문제, 잠깐 쉬었다가

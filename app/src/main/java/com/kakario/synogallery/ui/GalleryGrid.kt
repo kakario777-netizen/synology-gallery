@@ -918,7 +918,10 @@ fun Thumb(
             .size(THUMB_PX)
             .build()
     }
-    val req = remember(item.thumbUnitId, item.cacheKey, size, Syno.sessionTick, retry) {
+    // 아직 안 뜬 칸은 뒤에서 썸네일을 받을 때마다 폰 캐시를 다시 확인 (스크롤해서 돌아올 필요 없음)
+    var loaded by remember(item.id, item.cacheKey) { mutableStateOf(false) }
+    val bgTick = if (loaded) 0 else com.kakario.synogallery.ThumbPrefetch.version
+    val req = remember(item.thumbUnitId, item.cacheKey, size, Syno.sessionTick, retry, bgTick) {
         val key = Syno.thumbKey(item.thumbUnitId, item.cacheKey, size)
         ImageRequest.Builder(ctx)
             .data(com.kakario.synogallery.thumbData(item, size))
@@ -938,6 +941,7 @@ fun Thumb(
         AsyncImage(
             // NAS 썸네일이 깨졌거나 없으면 폰에서 직접 만든 썸네일로
             model = if (fallback) fbReq else req,
+            onSuccess = { loaded = true },
             onError = { st ->
                 val t = st.result.throwable
                 val net = t is java.io.IOException || t is coil.network.HttpException
