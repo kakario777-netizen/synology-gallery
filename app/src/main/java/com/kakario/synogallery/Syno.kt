@@ -146,16 +146,19 @@ object Syno {
             try {
                 when {
                     isSessionError(e) && pw.isNotEmpty() -> {
+                        AppLog.add("로그인", "세션 만료 → 다시 로그인")
                         doLogin(Settings.host, Settings.account, pw, null, reResolve = false)
                         block()
                     }
                     qc && isNetworkError(e) && pw.isNotEmpty() -> {
+                        AppLog.err("접속", "연결 끊김 → QuickConnect 주소 다시 찾기", e)
                         doLogin(Settings.host, Settings.account, pw, null, reResolve = true)
                         block()
                     }
                     else -> throw e
                 }
             } catch (e2: Exception) {
+                AppLog.err("오류", "요청 실패", e2)
                 throw friendly(e2)
             }
         }
@@ -180,10 +183,18 @@ object Syno {
         if (!reResolve && Settings.lastBaseFor.equals(id, ignoreCase = true) && Settings.lastBase.isNotEmpty() &&
             QuickConnect.quickCheck(Settings.lastBase)
         ) {
+            AppLog.add("접속", "지난 주소 그대로 사용 (${Settings.lastRoute})")
             applyResolved(id, Settings.lastBase, Settings.lastRoute, Settings.lastBaseInsecure)
             return Settings.lastBase
         }
-        val r = QuickConnect.resolve(id)
+        val t0 = System.currentTimeMillis()
+        val r = try {
+            QuickConnect.resolve(id)
+        } catch (e: Exception) {
+            AppLog.err("접속", "QuickConnect 주소 찾기 실패", e)
+            throw e
+        }
+        AppLog.add("접속", "QuickConnect 연결: ${r.route} (${System.currentTimeMillis() - t0}ms)")
         applyResolved(id, r.base, r.route, r.insecure)
         Settings.lastBase = r.base
         Settings.lastBaseFor = id
@@ -230,6 +241,7 @@ object Syno {
                 val data = post(target, params, withSid = false)
                 sid = data.optString("sid").ifEmpty { throw SynoException(-1, "로그인 응답에 세션이 없어요.") }
                 sessionTick++
+                AppLog.add("로그인", "성공 (${Settings.account}, 세션 $session)")
                 sessionPassword = password
                 return
             } catch (e: SynoException) {
@@ -291,27 +303,34 @@ object Syno {
 
     /** 앱 시작 때 자동 로그인: 지난 주소를 먼저 쓰고, 사진 권한 검사는 건너뜀 */
     suspend fun quickLogin() = withContext(Dispatchers.IO) {
+        AppLog.add("로그인", "자동 로그인 시작")
         try {
             doLogin(Settings.host, Settings.account, Settings.password, null, reResolve = false)
         } catch (e: Exception) {
             // 지난 주소가 안 되면 처음부터 다시 찾기
             if (QuickConnect.extractId(Settings.host) != null && isNetworkError(e)) {
                 doLogin(Settings.host, Settings.account, Settings.password, null, reResolve = true)
-            } else throw friendly(e)
+            } else {
+                AppLog.err("로그인", "자동 로그인 실패", e)
+                throw friendly(e)
+            }
         }
     }
 
     suspend fun login(host: String, account: String, password: String, otp: String?) =
         withContext(Dispatchers.IO) {
             try {
+                AppLog.add("로그인", "로그인 화면에서 로그인 시도 ($host)")
                 doLogin(host, account, password, otp, reResolve = true)
                 checkPhotos(base)
             } catch (e: Exception) {
+                AppLog.err("로그인", "로그인 실패", e)
                 throw friendly(e)
             }
         }
 
     fun logout() {
+        AppLog.add("로그아웃", "로그아웃")
         sid = null
         resolvedBase = null
         resolvedFor = null

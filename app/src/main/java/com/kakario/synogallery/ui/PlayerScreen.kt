@@ -203,6 +203,7 @@ fun PlayerScreen(index: Int, nav: NavController) {
         val listener = object : Player.Listener {
             override fun onPlayerError(e: PlaybackException) {
                 error = "재생할 수 없어요.\n(${e.errorCodeName})"
+                com.kakario.synogallery.AppLog.err("재생", "영상 재생 실패 (${item.filename})", e)
             }
         }
         player.addListener(listener)

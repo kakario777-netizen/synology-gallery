@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -68,6 +71,19 @@ fun SettingsScreen(nav: NavController, onLogout: () -> Unit) {
     var cacheMsg by remember { mutableStateOf("") }
     var ask by remember { mutableStateOf<Ask?>(null) }
     var settingPattern by remember { mutableStateOf(false) }
+    var showLog by remember { mutableStateOf(false) }
+    val clip = androidx.compose.ui.platform.LocalClipboardManager.current
+    // 최근 200줄 + 기기 정보 (채팅에 붙여 넣기용)
+    fun recentLog(): String {
+        val ver = try {
+            ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName
+        } catch (_: Exception) {
+            "?"
+        }
+        val body = com.kakario.synogallery.AppLog.read().lines().filter { it.isNotBlank() }.takeLast(200).joinToString("\n")
+        val crash = com.kakario.synogallery.CrashLog.read()?.let { "\n\n[마지막 튕김 상세]\n$it" } ?: ""
+        return "시놀 갤러리 $ver / Android ${android.os.Build.VERSION.RELEASE} / ${android.os.Build.MODEL}\n$body$crash"
+    }
 
     if (settingPattern) {
         PatternSetup(
@@ -355,7 +371,60 @@ fun SettingsScreen(nav: NavController, onLogout: () -> Unit) {
                     modifier = Modifier.padding(16.dp, 24.dp),
                 )
             }
+
+            // ─── 앱 기록 (맨 아래) ───
+            item { Section("앱 기록") }
+            item {
+                Hint("접속·로그인·로그아웃·오류·튕김·업데이트 같은 특이사항이 자동으로 기록돼요. 문제가 생기면 '최근 기록 복사'를 눌러 그대로 붙여 넣어 주세요.")
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedButton(onClick = { showLog = true }) { Text("기록 보기") }
+                    OutlinedButton(onClick = {
+                        clip.setText(androidx.compose.ui.text.AnnotatedString(recentLog()))
+                        toast(ctx, "최근 기록을 복사했어요")
+                    }) { Text("최근 기록 복사") }
+                    OutlinedButton(onClick = {
+                        ask = Ask("기록 지우기", "앱 기록을 모두 지울까요?", "지우기") {
+                            com.kakario.synogallery.AppLog.clear()
+                            com.kakario.synogallery.CrashLog.clear()
+                            toast(ctx, "기록을 지웠어요")
+                        }
+                    }) { Text("지우기") }
+                }
+                Spacer(Modifier.height(32.dp))
+            }
         }
+    }
+
+    if (showLog) {
+        val lines = remember { com.kakario.synogallery.AppLog.read().lines().filter { it.isNotBlank() }.takeLast(400).reversed() }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showLog = false },
+            title = { Text("앱 기록 (최신순)") },
+            text = {
+                if (lines.isEmpty()) Text("아직 기록이 없어요.")
+                else LazyColumn(Modifier.heightIn(max = 460.dp)) {
+                    items(lines.size) { i ->
+                        val l = lines[i]
+                        val bad = l.contains("[튕김]") || l.contains("실패") || l.contains("[오류]")
+                        Text(
+                            l, style = MaterialTheme.typography.bodySmall,
+                            color = if (bad) MaterialTheme.colorScheme.error else com.kakario.synogallery.Palette.fg,
+                            modifier = Modifier.padding(vertical = 3.dp),
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    clip.setText(androidx.compose.ui.text.AnnotatedString(recentLog()))
+                    toast(ctx, "최근 기록을 복사했어요")
+                }) { Text("최근 기록 복사") }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { showLog = false }) { Text("닫기") } },
+        )
     }
 
     ask?.let { a ->

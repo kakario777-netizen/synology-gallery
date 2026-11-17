@@ -147,6 +147,7 @@ class GalleryViewModel(private val source: Source, private val cacheKey: String)
                 // 1) 폰에 저장해 둔 목록을 먼저 바로 보여줌
                 val cached = com.kakario.synogallery.ItemCache.load(cacheKey)
                 if (cached != null && cached.items.isNotEmpty()) {
+                    com.kakario.synogallery.AppLog.add("목록", "저장된 목록으로 바로 표시 ($cacheKey, ${cached.items.size}장)")
                     items.addAll(cached.items)
                     end = true
                     ensureSimilar()
@@ -180,6 +181,7 @@ class GalleryViewModel(private val source: Source, private val cacheKey: String)
                 }
                 com.kakario.synogallery.ItemCache.save(cacheKey, rawOffset, items.toList())
             } catch (e: Exception) {
+                com.kakario.synogallery.AppLog.err("목록", "불러오기 실패 ($cacheKey)", e)
                 error = e.message ?: "불러오지 못했어요."
             } finally {
                 loading = false
@@ -201,6 +203,7 @@ class GalleryViewModel(private val source: Source, private val cacheKey: String)
             val same = count >= 0 && count == c.serverCount && first.size == head.size &&
                 first.indices.all { first[it].id == head[it].id && first[it].cacheKey == head[it].cacheKey }
             if (same) return
+            com.kakario.synogallery.AppLog.add("목록", "바뀐 내용 있음 → 새로 받기 ($cacheKey, 서버 $count / 저장 ${c.serverCount})")
             val fresh = ArrayList<Item>(maxOf(count, 0))
             var off = 0
             while (true) {
@@ -214,7 +217,8 @@ class GalleryViewModel(private val source: Source, private val cacheKey: String)
             sortVersion++
             com.kakario.synogallery.ItemCache.save(cacheKey, off, fresh)
             ensureSimilar()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            com.kakario.synogallery.AppLog.err("목록", "최신 확인 실패, 저장된 목록 유지 ($cacheKey)", e)
             // 연결이 안 되면 저장해 둔 목록 그대로 보여줌
         } finally {
             refreshing = false

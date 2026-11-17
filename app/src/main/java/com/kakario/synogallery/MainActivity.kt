@@ -106,11 +106,11 @@ class MainActivity : FragmentActivity() {
                             val upState by updater.state.collectAsState()
                             com.kakario.synogallery.ui.UpdateDialog(upState, updater)
                             // 지난번에 튕겼으면 원인을 보여주고 복사할 수 있게
-                            var crash by remember { mutableStateOf(CrashLog.read()) }
+                            var crash by remember { mutableStateOf(CrashLog.unseen()) }
                             crash?.let { text ->
                                 val clip = androidx.compose.ui.platform.LocalClipboardManager.current
                                 androidx.compose.material3.AlertDialog(
-                                    onDismissRequest = { CrashLog.clear(); crash = null },
+                                    onDismissRequest = { crash = null; CrashLog.markSeen() },
                                     title = { androidx.compose.material3.Text("지난번에 앱이 꺼졌어요") },
                                     text = {
                                         androidx.compose.material3.Text(
@@ -122,11 +122,11 @@ class MainActivity : FragmentActivity() {
                                         androidx.compose.material3.TextButton(onClick = {
                                             clip.setText(androidx.compose.ui.text.AnnotatedString(text))
                                             android.widget.Toast.makeText(this@MainActivity, "복사했어요", android.widget.Toast.LENGTH_SHORT).show()
-                                            CrashLog.clear(); crash = null
+                                            crash = null; CrashLog.markSeen()
                                         }) { androidx.compose.material3.Text("복사") }
                                     },
                                     dismissButton = {
-                                        androidx.compose.material3.TextButton(onClick = { CrashLog.clear(); crash = null }) {
+                                        androidx.compose.material3.TextButton(onClick = { crash = null; CrashLog.markSeen() }) {
                                             androidx.compose.material3.Text("닫기")
                                         }
                                     },
@@ -215,6 +215,7 @@ fun AppNav() {
         try {
             task.await()
         } catch (e: Exception) {
+            AppLog.err("시작", "시작 자동 로그인 실패", e)
             val authFail = e is Syno.SynoException && e.code in listOf(400, 401, 402, 403, 404, 105)
             if (authFail) {
                 android.widget.Toast.makeText(ctx, e.message ?: "다시 로그인해 주세요", android.widget.Toast.LENGTH_LONG).show()

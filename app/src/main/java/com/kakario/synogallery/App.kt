@@ -11,7 +11,9 @@ import okhttp3.Request
 class App : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
+        AppLog.init(this)
         CrashLog.init(this)
+        AppLog.add("시작", "앱 실행 (버전 ${try { packageManager.getPackageInfo(packageName, 0).versionName } catch (_: Exception) { "?" }})")
         Settings.init(this)
         Syno.init()
         Similar.init(this)

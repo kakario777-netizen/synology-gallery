@@ -32,11 +32,25 @@ object CrashLog {
                 )
             } catch (_: Exception) {
             }
+            AppLog.err("튕김", "앱이 꺼짐 (스레드 ${t.name}) ${e.stackTrace.take(3).joinToString(" < ")}", e)
             prev?.uncaughtException(t, e)
         }
     }
 
     fun read(): String? = file.takeIf { it.exists() }?.readText()
+
+    private val seen get() = File(file.parentFile, "last_crash_seen")
+
+    /** 아직 안내하지 않은 튕김 기록 */
+    fun unseen(): String? = if (file.exists() && (!seen.exists() || seen.lastModified() < file.lastModified())) read() else null
+
+    /** 안내했음 (기록은 '최근 기록 복사'에 계속 포함) */
+    fun markSeen() {
+        try {
+            seen.writeText("1")
+        } catch (_: Exception) {
+        }
+    }
 
     fun clear() {
         file.delete()

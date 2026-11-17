@@ -7,6 +7,7 @@ import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import com.kakario.synogallery.AppLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -59,6 +60,7 @@ class Updater private constructor(private val context: Context) {
             try {
                 val r = fetchLatest()
                 val cur = currentBuild
+                AppLog.add("업데이트", "확인: 지금 #$cur, 최신 #${r?.build ?: "?"}")
                 _state.value = when {
                     r == null -> if (quiet) State.Idle else State.Failed("최신 빌드 정보를 찾지 못했어요")
                     r.build > cur -> State.Available(r, cur)
@@ -66,6 +68,7 @@ class Updater private constructor(private val context: Context) {
                     else -> State.UpToDate(cur)
                 }
             } catch (e: Exception) {
+                AppLog.err("업데이트", "확인 실패", e)
                 _state.value = if (quiet) State.Idle else State.Failed(
                     "업데이트를 확인하지 못했어요.\n${e.message ?: e.javaClass.simpleName}"
                 )
@@ -167,6 +170,7 @@ class Updater private constructor(private val context: Context) {
 
     /** 설치 결과 (InstallReceiver에서). */
     internal fun onInstallResult(status: Int, message: String?) {
+        com.kakario.synogallery.AppLog.add("업데이트", "설치 결과 $status ${message ?: ""}")
         if (status == PackageInstaller.STATUS_SUCCESS) return
         _state.value = State.Failed("설치하지 못했어요.\n${message ?: "코드 $status"}")
     }

@@ -55,6 +55,7 @@ object LocalThumbs {
         pending = queue.size
         if (queue.isEmpty() || job?.isActive == true || Syno.sid == null) return
         job = scope.launch {
+            AppLog.add("썸네일", "NAS에 없는 썸네일 만들기 시작 (${queue.size}장)")
             var fails = 0
             while (Settings.autoLocalThumbs) {
                 // 최신 사진부터
@@ -67,6 +68,7 @@ object LocalThumbs {
                     fails++
                     // 연달아 실패하면 연결 문제 → 잠깐 쉬었다가
                     if (fails >= 6) {
+                        AppLog.add("썸네일", "연달아 실패 → 1분 쉬었다가 이어서 (남은 ${queue.size})")
                         kotlinx.coroutines.delay(60_000)
                         fails = 0
                     }
@@ -132,7 +134,8 @@ object LocalThumbs {
                 while (maxOf(o.outWidth, o.outHeight) / (s * 2) >= SIZE) s *= 2
                 BitmapFactory.decodeFile(tmp.path, BitmapFactory.Options().apply { inSampleSize = s })
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            AppLog.err("썸네일", "사진 썸네일 만들기 실패 (${item.filename})", e)
             return null
         } finally {
             tmp.delete()
@@ -147,7 +150,8 @@ object LocalThumbs {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
                 r.getScaledFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, SIZE, SIZE)
             } else r.getFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            AppLog.err("썸네일", "영상 썸네일 만들기 실패 (${item.filename})", e)
             null
         } finally {
             try {

@@ -139,6 +139,7 @@ object Similar {
         lists[key] = items
         if (job?.isActive == true || Syno.sid == null) return
         job = scope.launch {
+            AppLog.add("분석", "비슷한 사진 분석 시작 (분석된 사진 ${hashes.size}장)")
             var wait = 15_000L
             while (true) {
                 val c = lists.values.flatMap { candidates(it) }.distinctBy { it.id }
@@ -148,6 +149,7 @@ object Similar {
                     continue
                 }
                 // 통신이 끊겼거나 로그인이 만료됨 → 멈추지 않고 잠깐 쉬었다가 이어서
+                AppLog.add("분석", "비슷한 사진: 연결 문제로 ${wait / 1000}초 쉬었다가 이어서 (남은 $pending)")
                 waiting = true
                 // 가벼운 요청 한 번: 로그인이 만료됐으면 여기서 자동으로 다시 로그인됨
                 runCatching { Syno.countItems(AllSource) }
@@ -157,6 +159,7 @@ object Similar {
             }
             pending = 0
             version++
+            AppLog.add("분석", "비슷한 사진 분석 끝 (분석된 사진 ${hashes.size}장)")
         }
     }
 
