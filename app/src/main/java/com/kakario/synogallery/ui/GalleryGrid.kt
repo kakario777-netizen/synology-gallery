@@ -502,8 +502,6 @@ fun GalleryGrid(
                 }
             }
     }
-            }
-    }
 
     // 뷰어에서 돌아오면 마지막으로 본 사진 근처로
     LaunchedEffect(rows.isNotEmpty()) {
