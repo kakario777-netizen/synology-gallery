@@ -105,6 +105,33 @@ class MainActivity : FragmentActivity() {
                             val updater = remember { com.kakario.synogallery.update.Updater.get(this@MainActivity) }
                             val upState by updater.state.collectAsState()
                             com.kakario.synogallery.ui.UpdateDialog(upState, updater)
+                            // 지난번에 튕겼으면 원인을 보여주고 복사할 수 있게
+                            var crash by remember { mutableStateOf(CrashLog.read()) }
+                            crash?.let { text ->
+                                val clip = androidx.compose.ui.platform.LocalClipboardManager.current
+                                androidx.compose.material3.AlertDialog(
+                                    onDismissRequest = { CrashLog.clear(); crash = null },
+                                    title = { androidx.compose.material3.Text("지난번에 앱이 꺼졌어요") },
+                                    text = {
+                                        androidx.compose.material3.Text(
+                                            "아래 '복사'를 눌러 채팅에 붙여 넣어 주시면 원인을 고칠게요.\n\n" + text.lines().take(8).joinToString("\n"),
+                                            style = MaterialTheme.typography.bodySmall,
+                                        )
+                                    },
+                                    confirmButton = {
+                                        androidx.compose.material3.TextButton(onClick = {
+                                            clip.setText(androidx.compose.ui.text.AnnotatedString(text))
+                                            android.widget.Toast.makeText(this@MainActivity, "복사했어요", android.widget.Toast.LENGTH_SHORT).show()
+                                            CrashLog.clear(); crash = null
+                                        }) { androidx.compose.material3.Text("복사") }
+                                    },
+                                    dismissButton = {
+                                        androidx.compose.material3.TextButton(onClick = { CrashLog.clear(); crash = null }) {
+                                            androidx.compose.material3.Text("닫기")
+                                        }
+                                    },
+                                )
+                            }
                         }
                     }
                 }

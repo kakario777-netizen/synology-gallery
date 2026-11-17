@@ -14,6 +14,9 @@ import coil.fetch.Fetcher
 import coil.fetch.SourceResult
 import coil.request.Options
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
@@ -35,6 +38,43 @@ object LocalThumbs {
 
     fun init(ctx: Context) {
         dir = File(ctx.filesDir, "local_thumbs").apply { mkdirs() }
+    }
+
+    /** 남은 개수 (화면 표시용) */
+    var pending by androidx.compose.runtime.mutableIntStateOf(0)
+        private set
+
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
+    @Volatile private var job: kotlinx.coroutines.Job? = null
+    private val queue = ConcurrentHashMap<Long, Item>()
+    private val tries = ConcurrentHashMap<Long, Int>()
+
+    /** 앱을 켜 두면 NAS 썸네일이 없는 사진을 뒤에서 하나씩 전부 만들어 둠 */
+    fun ensureAll(items: List<Item>) {
+        for (it in items) if (!it.thumbReady && cached(it) == null && (tries[it.id] ?: 0) < 2) queue[it.id] = it
+        pending = queue.size
+        if (queue.isEmpty() || job?.isActive == true || Syno.sid == null) return
+        job = scope.launch {
+            var fails = 0
+            while (Settings.autoLocalThumbs) {
+                // 최신 사진부터
+                val next = queue.values.maxByOrNull { it.time } ?: break
+                val ok = get(next) != null
+                queue.remove(next.id)
+                if (ok) fails = 0 else {
+                    tries[next.id] = (tries[next.id] ?: 0) + 1
+                    if (tries[next.id]!! < 2) queue[next.id] = next
+                    fails++
+                    // 연달아 실패하면 연결 문제 → 잠깐 쉬었다가
+                    if (fails >= 6) {
+                        kotlinx.coroutines.delay(60_000)
+                        fails = 0
+                    }
+                }
+                pending = queue.size
+            }
+            pending = queue.size
+        }
     }
 
     private fun file(item: Item) = File(dir, "${item.id}_${item.cacheKey.hashCode()}.jpg")

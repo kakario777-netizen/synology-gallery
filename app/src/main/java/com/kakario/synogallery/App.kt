@@ -11,6 +11,7 @@ import okhttp3.Request
 class App : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
+        CrashLog.init(this)
         Settings.init(this)
         Syno.init()
         Similar.init(this)

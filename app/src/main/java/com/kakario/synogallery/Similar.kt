@@ -55,6 +55,8 @@ object Similar {
     var version by mutableIntStateOf(0)
         private set
 
+    @Volatile private var lastBump = 0L
+
     /** 연결 문제로 잠깐 쉬는 중 (화면 표시용) */
     var waiting by mutableStateOf(false)
         private set
@@ -154,6 +156,7 @@ object Similar {
                 waiting = false
             }
             pending = 0
+            version++
         }
     }
 
@@ -198,7 +201,11 @@ object Similar {
             done += chunk.size
             pending = (items.size - done).coerceAtLeast(0)
             flush(lines)
-            version++
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (now - lastBump > 3000 || pending == 0) {
+                lastBump = now
+                version++
+            }
             val bad = results.count { it.second !is Ok }
             // 한 묶음에서 절반 넘게 실패하면 그림 문제가 아니라 연결(로그인 만료 등) 문제 → 기록하지 않고 멈춤
             if (bad * 2 > results.size) return@withContext false

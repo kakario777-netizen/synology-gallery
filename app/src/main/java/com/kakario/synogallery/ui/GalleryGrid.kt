@@ -233,6 +233,7 @@ class GalleryViewModel(private val source: Source, private val cacheKey: String)
     }
 
     fun ensureSimilar() {
+        if (Settings.autoLocalThumbs && items.isNotEmpty()) com.kakario.synogallery.LocalThumbs.ensureAll(items.toList())
         if (!Settings.groupSimilar || Settings.sortBy != "takentime" || items.isEmpty()) return
         Similar.ensure(cacheKey, items.toList())
     }
@@ -267,8 +268,8 @@ private sealed interface GridRow {
     val section: String
 }
 
-private data class HeaderRow(val label: String, override val month: String, val count: Int) : GridRow {
-    override val key get() = "h_$label"
+private data class HeaderRow(val label: String, override val month: String, val count: Int, val seq: Int = 0) : GridRow {
+    override val key get() = "h_${seq}_$label"
     override val section get() = label
 }
 
@@ -307,7 +308,7 @@ private fun buildRows(items: List<Item>, grouping: String, groups: List<List<Int
             }
             if (label != last) {
                 closeHeader()
-                out += HeaderRow(label, month, 0)
+                out += HeaderRow(label, month, 0, out.size)
                 headerAt = out.lastIndex
                 count = 0
                 last = label
@@ -530,6 +531,15 @@ fun GalleryGrid(
         ) {
             header?.invoke(this)
 
+            if (com.kakario.synogallery.LocalThumbs.pending > 0) {
+                item(span = { GridItemSpan(maxLineSpan) }, key = "thumb_progress") {
+                    Text(
+                        "NAS에 없는 썸네일 만드는 중… 남은 ${com.kakario.synogallery.LocalThumbs.pending}장",
+                        color = Palette.sub, style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
+                }
+            }
             if (stack && Similar.pending > 0) {
                 item(span = { GridItemSpan(maxLineSpan) }, key = "similar_progress") {
                     Text(

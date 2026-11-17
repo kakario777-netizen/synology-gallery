@@ -139,6 +139,13 @@ fun SettingsScreen(nav: NavController, onLogout: () -> Unit) {
                     listOf("빠르게" to "sm", "보통" to "m", "선명하게" to "xl"),
                 ) { Settings.thumbSize = it }
             }
+            item {
+                Toggle(
+                    "없는 썸네일 미리 만들기",
+                    "NAS가 썸네일을 안 만들어 둔 사진·영상(HEIC·HEVC 등)을 앱을 켜 둔 동안 미리 전부 만들어 둬요",
+                    Settings.autoLocalThumbs,
+                ) { Settings.autoLocalThumbs = it }
+            }
             item { Toggle("사진에 태그 표시", "썸네일 아래쪽에 붙은 태그를 보여줘요", Settings.showTags) { Settings.showTags = it } }
             item { Toggle("정사각형 썸네일", "끄면 사진 비율 그대로 보여줘요", Settings.squareThumbs) { Settings.squareThumbs = it } }
             item { Toggle("파일명 표시", null, Settings.showFilename) { Settings.showFilename = it } }
