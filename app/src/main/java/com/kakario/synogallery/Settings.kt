@@ -42,6 +42,7 @@ object Settings {
     var inlineVideo by P("inlineVideo", false)    // 뷰어에서 영상 바로 재생
     var motionPhoto by P("motionPhoto", "manual")   // auto / manual / off (갤럭시 모션 포토)
     var autoLocalThumbs by P("autoLocalThumbs", true) // NAS에 없는 썸네일을 앱이 미리 전부 만들기
+    var cacheGb by P("cacheGb", 30)                 // 사진 캐시(썸네일·큰 사진) 최대 용량
     var allVideosAlbum by P("allVideosAlbum", true) // 앨범 탭 맨 앞 '모든 동영상'
     var videoSort by P("videoSort", "date_desc")  // date_desc / date_asc / name / size / length
 

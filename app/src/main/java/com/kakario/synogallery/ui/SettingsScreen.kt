@@ -324,6 +324,26 @@ fun SettingsScreen(nav: NavController, onLogout: () -> Unit) {
                     Modifier.fillMaxWidth().padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
+                    val used = remember(cacheMsg) {
+                        (ctx.imageLoader.diskCache?.size ?: 0L) / (1024.0 * 1024 * 1024)
+                    }
+                    Text("사진 캐시 용량 (지금 %.1fGB 사용 중)".format(used), style = MaterialTheme.typography.bodyMedium)
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        listOf(5, 10, 30, 50, 100).forEach { gb ->
+                            FilterChip(
+                                selected = Settings.cacheGb == gb,
+                                onClick = { Settings.cacheGb = gb; toast(ctx, "앱을 다시 켜면 적용돼요") },
+                                label = { Text("${gb}GB") },
+                            )
+                        }
+                    }
+                    Text(
+                        "썸네일과 크게 본 사진을 폰에 저장해 두는 공간이에요. 넉넉할수록 다시 받을 일이 없어 빨라요.",
+                        color = Color.Gray, style = MaterialTheme.typography.bodySmall,
+                    )
                     OutlinedButton(onClick = {
                         ask = Ask("사진 캐시 비우기", "폰에 저장된 썸네일을 모두 지울까요? 다음에 볼 때 다시 받아와요.", "비우기") {
                             scope.launch {

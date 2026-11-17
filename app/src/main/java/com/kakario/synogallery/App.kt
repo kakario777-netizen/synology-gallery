@@ -36,7 +36,7 @@ class App : Application(), ImageLoaderFactory {
         .diskCache {
             DiskCache.Builder()
                 .directory(cacheDir.resolve("images"))
-                .maxSizeBytes(1024L * 1024 * 1024)
+                .maxSizeBytes(Settings.cacheGb.coerceAtLeast(1) * 1024L * 1024 * 1024)
                 .build()
         }
         .respectCacheHeaders(false)
