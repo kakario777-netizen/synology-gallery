@@ -114,6 +114,7 @@ fun HomeScreen(nav: NavController) {
                     }
                 }
             }
+            BackgroundStatusBar()
             // 좌우로 밀어서 탭 이동
             HorizontalPager(
                 state = pager,
@@ -754,5 +755,41 @@ fun PlaceDetailScreen(id: Long, title: String, nav: NavController) {
         },
     ) { pad ->
         GalleryGrid(com.kakario.synogallery.PlaceSource(id), nav, Modifier.padding(pad))
+    }
+}
+
+
+/** 탭 바로 아래 고정: 지금 뒤에서 하는 일 (스크롤해도 사라지지 않음) */
+@Composable
+fun BackgroundStatusBar() {
+    val parts = buildList {
+        if (com.kakario.synogallery.BgStatus.connecting) add("NAS 연결 중")
+        if (com.kakario.synogallery.BgStatus.checking > 0) add("새 사진 확인 중")
+        val pre = com.kakario.synogallery.ThumbPrefetch.pending
+        if (pre > 0) add("썸네일 받는 중 ${"%,d".format(pre)}")
+        val loc = com.kakario.synogallery.LocalThumbs.pending
+        if (loc > 0) add("썸네일 만드는 중 ${"%,d".format(loc)}")
+        val sim = com.kakario.synogallery.Similar.pending
+        if (sim > 0 && Settings.groupSimilar) {
+            add(if (com.kakario.synogallery.Similar.waiting) "비슷한 사진 분석 대기 (연결)" else "비슷한 사진 분석 ${"%,d".format(sim)}")
+        }
+    }
+    androidx.compose.animation.AnimatedVisibility(parts.isNotEmpty()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(com.kakario.synogallery.Palette.placeholder)
+                .padding(horizontal = 12.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 1.5.dp)
+            Text(
+                parts.joinToString("  ·  "),
+                style = MaterialTheme.typography.labelMedium,
+                color = com.kakario.synogallery.Palette.sub,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
     }
 }

@@ -23,6 +23,12 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
+/** 뒤에서 하는 일 상태 (탭 아래 고정 줄에 표시) */
+object BgStatus {
+    var connecting by androidx.compose.runtime.mutableStateOf(false)
+    var checking by mutableIntStateOf(0)
+}
+
 /** 화면이 바쁜지 (스크롤 중이면 뒤 작업은 잠깐 쉼) */
 object UiBusy {
     @Volatile var scrolling = false
@@ -79,7 +85,7 @@ object ThumbPrefetch {
             val lines = StringBuilder()
             var done = 0
             var wait = 15_000L
-            for (chunk in todo.chunked(12)) {
+            for (chunk in todo.chunked(6)) {
                 if (!Settings.prefetchThumbs) break
                 UiBusy.waitIdle()
                 val ok = coroutineScope {

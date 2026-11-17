@@ -212,9 +212,12 @@ fun AppNav() {
         val task = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).async { Syno.quickLogin() }
         Syno.loginTask = task
         start = "home"
+        BgStatus.connecting = true
         try {
             task.await()
+            BgStatus.connecting = false
         } catch (e: Exception) {
+            BgStatus.connecting = false
             AppLog.err("시작", "시작 자동 로그인 실패", e)
             val authFail = e is Syno.SynoException && e.code in listOf(400, 401, 402, 403, 404, 105)
             if (authFail) {

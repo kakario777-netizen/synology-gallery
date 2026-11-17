@@ -58,6 +58,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -178,6 +179,7 @@ class GalleryViewModel(private val source: Source, private val cacheKey: String)
     private fun loadAll() {
         if (loading || end) return
         loading = true
+        com.kakario.synogallery.BgStatus.checking++
         error = null
         viewModelScope.launch {
             try {
@@ -194,6 +196,7 @@ class GalleryViewModel(private val source: Source, private val cacheKey: String)
                 error = e.message ?: "불러오지 못했어요."
             } finally {
                 loading = false
+                com.kakario.synogallery.BgStatus.checking--
             }
         }
     }
@@ -201,6 +204,7 @@ class GalleryViewModel(private val source: Source, private val cacheKey: String)
     /** 개수와 맨 앞 사진들이 같으면 그대로, 다르면 새로 받아서 한 번에 바꿈 */
     private suspend fun refresh(c: com.kakario.synogallery.ItemCache.Cached) {
         refreshing = true
+        com.kakario.synogallery.BgStatus.checking++
         try {
             val count = try {
                 Syno.countItems(source)
@@ -231,6 +235,7 @@ class GalleryViewModel(private val source: Source, private val cacheKey: String)
             // 연결이 안 되면 저장해 둔 목록 그대로 보여줌
         } finally {
             refreshing = false
+            com.kakario.synogallery.BgStatus.checking--
         }
     }
 
@@ -595,26 +600,6 @@ fun GalleryGrid(
         ) {
             header?.invoke(this)
 
-            if (com.kakario.synogallery.LocalThumbs.pending > 0) {
-                item(span = { GridItemSpan(maxLineSpan) }, key = "thumb_progress") {
-                    Text(
-                        "NAS에 없는 썸네일 만드는 중… 남은 ${com.kakario.synogallery.LocalThumbs.pending}장",
-                        color = Palette.sub, style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                    )
-                }
-            }
-            if (stack && Similar.pending > 0) {
-                item(span = { GridItemSpan(maxLineSpan) }, key = "similar_progress") {
-                    Text(
-                        if (Similar.waiting) "비슷한 사진 찾는 중… 남은 ${Similar.pending}장 (연결 기다리는 중, 곧 이어서 해요)"
-                        else "비슷한 사진 찾는 중… 남은 ${Similar.pending}장 (처음 한 번만)",
-                        color = Palette.sub, style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    )
-                }
-            }
-
             items(
                 count = rows.size,
                 key = { rows[it].key },
@@ -922,7 +907,18 @@ fun Thumb(
     val size = Settings.thumbSize
     val square = Settings.squareThumbs
     var fallback by remember(item.id, item.cacheKey) { mutableStateOf(false) }
-    val req = remember(item.thumbUnitId, item.cacheKey, size, Syno.sessionTick) {
+    // 받다가 실패한 썸네일은 잠깐 뒤 다시 시도 (그냥 두면 스크롤해서 다시 와야만 보였음)
+    var retry by remember(item.id, item.cacheKey) { mutableIntStateOf(0) }
+    val scope = rememberCoroutineScope()
+    val fbReq = remember(item.id, item.cacheKey) {
+        ImageRequest.Builder(ctx)
+            .data(com.kakario.synogallery.LocalThumb(item))
+            .memoryCacheKey("lt_${item.id}_${item.cacheKey}")
+            .crossfade(false)
+            .size(THUMB_PX)
+            .build()
+    }
+    val req = remember(item.thumbUnitId, item.cacheKey, size, Syno.sessionTick, retry) {
         val key = Syno.thumbKey(item.thumbUnitId, item.cacheKey, size)
         ImageRequest.Builder(ctx)
             .data(com.kakario.synogallery.thumbData(item, size))
@@ -941,8 +937,21 @@ fun Thumb(
     ) {
         AsyncImage(
             // NAS 썸네일이 깨졌거나 없으면 폰에서 직접 만든 썸네일로
-            model = if (fallback) com.kakario.synogallery.LocalThumb(item) else req,
-            onError = { if (!fallback && item.thumbReady && Syno.sid != null && Syno.validated) fallback = true },
+            model = if (fallback) fbReq else req,
+            onError = { st ->
+                val t = st.result.throwable
+                val net = t is java.io.IOException || t is coil.network.HttpException
+                when {
+                    fallback -> {}
+                    // 연결 문제: 폰에서 만들지 말고 잠깐 뒤 다시 받기
+                    net || !Syno.validated -> if (retry < 8) scope.launch {
+                        kotlinx.coroutines.delay(1200L * (retry + 1))
+                        retry++
+                    }
+                    // NAS에 썸네일 자체가 없음: 폰에서 만든 썸네일로 (페이드 없이)
+                    item.thumbReady -> fallback = true
+                }
+            },
             contentDescription = item.filename,
             contentScale = if (square) ContentScale.Crop else ContentScale.Fit,
             modifier = Modifier.fillMaxSize().padding(if (selected) 10.dp else 0.dp),
