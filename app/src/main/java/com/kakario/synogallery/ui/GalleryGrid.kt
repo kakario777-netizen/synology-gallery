@@ -188,8 +188,8 @@ class GalleryViewModel(private val source: Source, private val cacheKey: String)
                     rawOffset += page.size
                     items.addAll(filterPage(page))
                     if (page.size < PAGE) end = true
-                    ensureSimilar()
                 }
+                ensureSimilar()
                 com.kakario.synogallery.ItemCache.save(cacheKey, rawOffset, items.toList())
             } catch (e: Exception) {
                 com.kakario.synogallery.AppLog.err("목록", "불러오기 실패 ($cacheKey)", e)
@@ -251,10 +251,12 @@ class GalleryViewModel(private val source: Source, private val cacheKey: String)
     }
 
     fun ensureSimilar() {
-        if (Settings.autoLocalThumbs && items.isNotEmpty()) com.kakario.synogallery.LocalThumbs.ensureAll(items.toList())
-        if (source == com.kakario.synogallery.AllSource && items.isNotEmpty()) com.kakario.synogallery.ThumbPrefetch.ensure(items.toList())
+        if (items.isEmpty()) return
+        val snap = items.toList()
+        if (Settings.autoLocalThumbs) com.kakario.synogallery.LocalThumbs.ensureAll(snap)
+        if (source == com.kakario.synogallery.AllSource) com.kakario.synogallery.ThumbPrefetch.ensure(snap)
         if (!Settings.groupSimilar || Settings.sortBy != "takentime" || items.isEmpty()) return
-        Similar.ensure(cacheKey, items.toList())
+        Similar.ensure(cacheKey, snap)
     }
 
 
@@ -480,7 +482,7 @@ fun GalleryGrid(
                 val size = Settings.thumbSize
                 val base = currentKeyToRowIndex(first, first, state, currentKeyToRow)?.minus(first) ?: 0
                 val rowsNow = currentRows
-                val itemsNow = vm.items.toList()
+                val itemsNow = vm.items   // 복사하지 않고 그대로 읽기 (8만 장을 스크롤마다 복사하던 것 제거)
                 // 폰 캐시 확인은 화면 일꾼이 아닌 뒤쪽에서
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 for (i in range) {

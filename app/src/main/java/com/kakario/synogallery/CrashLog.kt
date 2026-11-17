@@ -28,7 +28,9 @@ object CrashLog {
                 file.writeText(
                     "시놀 갤러리 $ver / Android ${Build.VERSION.RELEASE} / ${Build.MODEL}\n" +
                         SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.KOREA).format(Date()) +
-                        " (스레드: ${t.name})\n\n" + sw.toString().take(6000)
+                        " (스레드: ${t.name})\n" +
+                        Runtime.getRuntime().let { r -> "메모리: 사용 ${(r.totalMemory() - r.freeMemory()) / 1048576}MB / 최대 ${r.maxMemory() / 1048576}MB" } +
+                        "\n\n" + sw.toString().take(6000)
                 )
             } catch (_: Exception) {
             }

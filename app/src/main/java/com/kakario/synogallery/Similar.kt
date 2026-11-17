@@ -206,7 +206,7 @@ object Similar {
             pending = (items.size - done).coerceAtLeast(0)
             flush(lines)
             val now = android.os.SystemClock.elapsedRealtime()
-            if (now - lastBump > 3000 || pending == 0) {
+            if (now - lastBump > 10_000 || pending == 0) {
                 lastBump = now
                 version++
             }
