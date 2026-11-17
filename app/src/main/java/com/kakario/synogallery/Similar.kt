@@ -242,7 +242,7 @@ object Similar {
             .size(72, 72)
             .allowHardware(false)
             .build()
-        val res = ctx.imageLoader.execute(req)
+        val res = BgImages.get(ctx).execute(req)
         if (res is coil.request.ErrorResult) {
             val t = res.throwable
             return if (t is java.io.IOException || t is coil.network.HttpException) NoNet else Broken

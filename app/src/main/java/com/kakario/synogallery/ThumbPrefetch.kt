@@ -31,11 +31,37 @@ object BgStatus {
 
 /** 화면이 바쁜지 (스크롤 중이면 뒤 작업은 잠깐 쉼) */
 object UiBusy {
-    @Volatile var scrolling = false
+    @Volatile private var lastActive = 0L
 
-    /** 스크롤이 멈출 때까지 기다림 */
+    @Volatile var scrolling = false
+        set(v) {
+            field = v
+            lastActive = android.os.SystemClock.elapsedRealtime()
+        }
+
+    /** 스크롤 중이거나 막 멈춘 직후(화면 썸네일을 받는 시간)에는 뒤 작업을 기다림 */
     suspend fun waitIdle() {
-        while (scrolling) delay(250)
+        while (scrolling || android.os.SystemClock.elapsedRealtime() - lastActive < 1500) delay(250)
+    }
+}
+
+/** 뒤 작업 전용 이미지 로더: 같은 폰 캐시를 쓰지만 통로는 따로 */
+object BgImages {
+    @Volatile private var loader: coil.ImageLoader? = null
+
+    fun get(ctx: Context): coil.ImageLoader = loader ?: synchronized(this) {
+        loader ?: coil.ImageLoader.Builder(ctx.applicationContext)
+            .callFactory {
+                object : okhttp3.Call.Factory {
+                    override fun newCall(request: okhttp3.Request) = Syno.bgClient.newCall(request)
+                }
+            }
+            .diskCache { ctx.imageLoader.diskCache!! }
+            .memoryCache(null as coil.memory.MemoryCache?)
+            .components { add(LocalThumbFetcher.Factory()) }
+            .respectCacheHeaders(false)
+            .build()
+            .also { loader = it }
     }
 }
 
@@ -124,7 +150,7 @@ object ThumbPrefetch {
             .size(32)
             .allowHardware(false)
             .build()
-        val res = ctx.imageLoader.execute(req)
+        val res = BgImages.get(ctx).execute(req)
         if (res is ErrorResult) return null
         val bmp = ((res as SuccessResult).drawable as? BitmapDrawable)?.bitmap ?: return null
         val one = Bitmap.createScaledBitmap(bmp, 1, 1, true)

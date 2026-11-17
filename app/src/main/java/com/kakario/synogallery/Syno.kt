@@ -25,6 +25,11 @@ object Syno {
     lateinit var client: OkHttpClient
         private set
 
+    /** 뒤 작업 전용 통로 */
+    @Volatile
+    lateinit var bgClient: OkHttpClient
+        private set
+
     @Volatile
     var sid: String? = null
         private set
@@ -72,7 +77,13 @@ object Syno {
             ctx.init(null, arrayOf(tm), SecureRandom())
             b.sslSocketFactory(ctx.socketFactory, tm).hostnameVerifier { _, _ -> true }
         }
+        // 화면에 보이는 썸네일용: NAS로 동시에 많이 받을 수 있게 (기본은 5개뿐이라 줄을 섰음)
+        b.dispatcher(okhttp3.Dispatcher().apply { maxRequests = 64; maxRequestsPerHost = 16 })
         client = b.build()
+        // 뒤에서 하는 일(미리 받기·분석)용: 따로 4개 통로만 → 화면에 보이는 썸네일을 막지 않음
+        bgClient = client.newBuilder()
+            .dispatcher(okhttp3.Dispatcher().apply { maxRequests = 8; maxRequestsPerHost = 4 })
+            .build()
     }
 
     fun normalizeHost(raw: String): String {
