@@ -76,15 +76,18 @@ fun Badge(text: String, modifier: Modifier = Modifier) {
     ) { Text(text, color = Color.White, style = MaterialTheme.typography.labelSmall) }
 }
 
-private val monthFmt = SimpleDateFormat("yyyy년 M월", Locale.KOREA)
-private val dayFmt = SimpleDateFormat("yyyy년 M월 d일 (E)", Locale.KOREA)
-private val fullFmt = SimpleDateFormat("yyyy.MM.dd (E) a h:mm", Locale.KOREA)
+// 날짜 글자 만들기: 여러 일꾼이 동시에 써도 안전한 방식 (예전 방식은 동시에 쓰면 망가져서 앱이 꺼졌음)
+private val monthFmt = java.time.format.DateTimeFormatter.ofPattern("yyyy년 M월", Locale.KOREA)
+private val dayFmt = java.time.format.DateTimeFormatter.ofPattern("yyyy년 M월 d일 (E)", Locale.KOREA)
+private val fullFmt = java.time.format.DateTimeFormatter.ofPattern("yyyy.MM.dd (E) a h:mm", Locale.KOREA)
+private val yearFmt = java.time.format.DateTimeFormatter.ofPattern("yyyy년", Locale.KOREA)
 
-private val yearFmt = SimpleDateFormat("yyyy년", Locale.KOREA)
-fun yearLabel(sec: Long): String = yearFmt.format(Date(sec * 1000))
-fun monthLabel(sec: Long): String = monthFmt.format(Date(sec * 1000))
-fun dayLabel(sec: Long): String = dayFmt.format(Date(sec * 1000))
-fun fullDate(sec: Long): String = fullFmt.format(Date(sec * 1000))
+private fun at(sec: Long) = java.time.Instant.ofEpochSecond(sec).atZone(java.time.ZoneId.systemDefault())
+
+fun yearLabel(sec: Long): String = yearFmt.format(at(sec))
+fun monthLabel(sec: Long): String = monthFmt.format(at(sec))
+fun dayLabel(sec: Long): String = dayFmt.format(at(sec))
+fun fullDate(sec: Long): String = fullFmt.format(at(sec))
 
 fun formatDuration(ms: Long): String {
     val s = ms / 1000
