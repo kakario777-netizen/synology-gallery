@@ -460,31 +460,48 @@ fun GalleryGrid(
         snapshotFlow { state.isScrollInProgress }.collect { com.kakario.synogallery.UiBusy.scrolling = it }
     }
 
-    // 스크롤하는 방향으로 앞쪽 두세 화면 분량 썸네일을 미리 불러 둠 → 한 박자 늦게 뜨는 것 방지
+    // 스크롤 방향 앞쪽 한 화면 반 분량만 미리 받아 둠.
+    // - 뒤 작업 전용 통로로 받아서, 지금 보이는 칸의 요청을 절대 막지 않음
+    // - 스크롤이 바뀌면 아직 안 끝난 이전 요청은 바로 취소 (예전엔 쌓이기만 해서 보이는 칸이 줄을 섰음)
     LaunchedEffect(state, vm) {
         var lastFirst = 0
+        val inFlight = ArrayList<coil.request.Disposable>()
         snapshotFlow { state.firstVisibleItemIndex to state.layoutInfo.visibleItemsInfo.size }
             .collect { (first, count) ->
+                inFlight.forEach { if (!it.isDisposed) it.dispose() }
+                inFlight.clear()
                 val down = first >= lastFirst
                 lastFirst = first
-                val span = (count * 2.5).toInt().coerceAtLeast(30)
+                val span = (count * 1.5).toInt().coerceIn(12, 60)
                 val range = if (down) (first + count) until (first + count + span) else (first - span).coerceAtLeast(0) until first
-                val loader = ctx.imageLoader
+                val mem = ctx.imageLoader.memoryCache
+                val disk = ctx.imageLoader.diskCache
+                val bg = com.kakario.synogallery.BgImages.get(ctx)
                 val size = Settings.thumbSize
+                val base = currentKeyToRowIndex(first, first, state, currentKeyToRow)?.minus(first) ?: 0
+                val rowsNow = currentRows
+                val itemsNow = vm.items.toList()
+                // 폰 캐시 확인은 화면 일꾼이 아닌 뒤쪽에서
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 for (i in range) {
-                    val r = currentRows.getOrNull(currentKeyToRowIndex(i, first, state, currentKeyToRow) ?: i) as? CellRow ?: continue
-                    val item = vm.items.getOrNull(r.index) ?: continue
+                    val r = rowsNow.getOrNull(i + base) as? CellRow ?: continue
+                    val item = itemsNow.getOrNull(r.index) ?: continue
+                    if (!item.thumbReady) continue
                     val key = Syno.thumbKey(item.thumbUnitId, item.cacheKey, size)
-                    if (loader.memoryCache?.get(coil.memory.MemoryCache.Key(key)) != null) continue
-                    loader.enqueue(
+                    if (mem?.get(coil.memory.MemoryCache.Key(key)) != null) continue
+                    if (disk?.openSnapshot(key)?.use { true } == true) continue
+                    inFlight += bg.enqueue(
                         ImageRequest.Builder(ctx)
                             .data(com.kakario.synogallery.thumbData(item, size))
-                            .memoryCacheKey(key)
                             .diskCacheKey(key)
-                            .size(THUMB_PX)
+                            .memoryCachePolicy(coil.request.CachePolicy.DISABLED)
+                            .size(32)
                             .build()
                     )
                 }
+                }
+            }
+    }
             }
     }
 
