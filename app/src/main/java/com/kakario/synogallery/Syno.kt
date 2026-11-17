@@ -394,6 +394,7 @@ object Syno {
             cacheKey = th?.optString("cache_key").orEmpty(),
             thumbUnitId = th?.optLong("unit_id", id) ?: id,
             hasXl = th?.optString("xl") == "ready",
+            thumbReady = th == null || th.optString("m").let { it.isEmpty() || it == "ready" } || th.optString("sm") == "ready",
             duration = vm?.optLong("duration") ?: 0L,
             lat = add?.optJSONObject("gps")?.optDouble("latitude", 0.0)?.takeIf { it != 0.0 && !it.isNaN() },
             lon = add?.optJSONObject("gps")?.optDouble("longitude", 0.0)?.takeIf { it != 0.0 && !it.isNaN() },

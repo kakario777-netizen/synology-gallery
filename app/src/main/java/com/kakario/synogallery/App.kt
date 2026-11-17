@@ -18,6 +18,7 @@ class App : Application(), ImageLoaderFactory {
         MotionPhoto.init(this)
         PlaceNames.init(this)
         ItemCache.init(this)
+        LocalThumbs.init(this)
     }
 
     override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)
@@ -27,6 +28,7 @@ class App : Application(), ImageLoaderFactory {
                 override fun newCall(request: Request): Call = Syno.client.newCall(request)
             }
         }
+        .components { add(LocalThumbFetcher.Factory()) }
         .memoryCache { MemoryCache.Builder(this).maxSizePercent(0.25).build() }
         .diskCache {
             DiskCache.Builder()

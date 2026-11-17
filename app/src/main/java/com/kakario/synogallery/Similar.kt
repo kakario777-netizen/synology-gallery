@@ -225,7 +225,7 @@ object Similar {
     private suspend fun hashOf(item: Item): Res {
         val k = Syno.thumbKey(item.thumbUnitId, item.cacheKey, "sm")
         val req = ImageRequest.Builder(ctx)
-            .data(Syno.thumbUrl(item.thumbUnitId, item.cacheKey, "sm"))
+            .data(thumbData(item, "sm"))
             .diskCacheKey(k)
             .memoryCachePolicy(CachePolicy.DISABLED)
             .size(72, 72)

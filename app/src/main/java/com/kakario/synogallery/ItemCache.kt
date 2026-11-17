@@ -11,7 +11,7 @@ import java.io.File
  */
 object ItemCache {
     private lateinit var dir: File
-    private const val VERSION = "v1"
+    private const val VERSION = "v2"
 
     data class Cached(val serverCount: Int, val items: List<Item>)
 
@@ -76,7 +76,8 @@ object ItemCache {
         append(i.duration).append('\t')
         append(i.tags.joinToString("\u001f") { clean(it) }).append('\t')
         append(i.lat ?: "").append('\t')
-        append(i.lon ?: "")
+        append(i.lon ?: "").append('\t')
+        append(if (i.thumbReady) 1 else 0)
     }
 
     private fun parse(line: String): Item? {
@@ -98,6 +99,7 @@ object ItemCache {
                 tags = if (p[11].isEmpty()) emptyList() else p[11].split('\u001f'),
                 lat = p[12].toDoubleOrNull(),
                 lon = p[13].toDoubleOrNull(),
+                thumbReady = p.getOrNull(14) != "0",
             )
         } catch (_: Exception) {
             null

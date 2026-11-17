@@ -847,10 +847,11 @@ fun Thumb(
     val ctx = LocalContext.current
     val size = Settings.thumbSize
     val square = Settings.squareThumbs
+    var fallback by remember(item.id, item.cacheKey) { mutableStateOf(false) }
     val req = remember(item.thumbUnitId, item.cacheKey, size, Syno.sessionTick) {
         val key = Syno.thumbKey(item.thumbUnitId, item.cacheKey, size)
         ImageRequest.Builder(ctx)
-            .data(Syno.thumbUrl(item.thumbUnitId, item.cacheKey, size))
+            .data(com.kakario.synogallery.thumbData(item, size))
             .memoryCacheKey(key)
             .diskCacheKey(key)
             .build()
@@ -863,7 +864,9 @@ fun Thumb(
             .clickable(onClick = onClick)
     ) {
         AsyncImage(
-            model = req,
+            // NAS 썸네일이 깨졌거나 없으면 폰에서 직접 만든 썸네일로
+            model = if (fallback) com.kakario.synogallery.LocalThumb(item) else req,
+            onError = { if (!fallback && item.thumbReady && Syno.sid != null) fallback = true },
             contentDescription = item.filename,
             contentScale = if (square) ContentScale.Crop else ContentScale.Fit,
             modifier = Modifier.fillMaxSize().padding(if (selected) 10.dp else 0.dp),

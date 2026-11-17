@@ -83,7 +83,7 @@ object Favorites {
         .put("id", i.id).put("filename", i.filename).put("time", i.time).put("type", i.type)
         .put("size", i.size).put("width", i.width).put("height", i.height).put("cacheKey", i.cacheKey)
         .put("thumbUnitId", i.thumbUnitId).put("hasXl", i.hasXl).put("duration", i.duration)
-        .put("tags", JSONArray(i.tags))
+        .put("tags", JSONArray(i.tags)).put("thumbReady", i.thumbReady)
 
     private fun fromJson(o: JSONObject) = Item(
         id = o.getLong("id"),
@@ -97,6 +97,7 @@ object Favorites {
         thumbUnitId = o.optLong("thumbUnitId", o.getLong("id")),
         hasXl = o.optBoolean("hasXl"),
         duration = o.optLong("duration"),
+        thumbReady = o.optBoolean("thumbReady", true),
         tags = o.optJSONArray("tags")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList(),
     )
 }

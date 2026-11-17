@@ -15,6 +15,8 @@ data class Item(
     val tags: List<String> = emptyList(),
     val lat: Double? = null,
     val lon: Double? = null,
+    /** NAS가 썸네일을 만들어 뒀는지 (HEIC·HEVC 등은 NAS가 안 만들어 줄 수 있음) */
+    val thumbReady: Boolean = true,
 ) {
     val isVideo get() = type == "video"
 }

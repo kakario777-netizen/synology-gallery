@@ -401,7 +401,7 @@ private fun StackStrip(stack: List<Item>, selected: Int, onSelect: (Int) -> Unit
                     AsyncImage(
                         model = remember(it.id) {
                             ImageRequest.Builder(ctx)
-                                .data(Syno.thumbUrl(it.thumbUnitId, it.cacheKey, "sm"))
+                                .data(com.kakario.synogallery.thumbData(it, "sm"))
                                 .memoryCacheKey(key).diskCacheKey(key).build()
                         },
                         contentDescription = it.filename,
@@ -502,7 +502,7 @@ private fun PosterImage(item: Item) {
     AsyncImage(
         model = remember(item.id) {
             ImageRequest.Builder(ctx)
-                .data(Syno.thumbUrl(item.thumbUnitId, item.cacheKey, s))
+                .data(com.kakario.synogallery.thumbData(item, s))
                 .memoryCacheKey(key).diskCacheKey(key)
                 .placeholderMemoryCacheKey(Syno.thumbKey(item.thumbUnitId, item.cacheKey, Settings.thumbSize))
                 .crossfade(false)
@@ -551,7 +551,8 @@ private fun PhotoImage(item: Item, onTap: () -> Unit) {
     val quality = Settings.viewerQuality
     val thumbSize = Settings.thumbSize
     val req = remember(item.id, quality) {
-        val (url, key) = if (quality == "original") {
+        // NAS 썸네일이 없는 사진(HEIC 등)은 원본을 바로 보여줌
+        val (url, key) = if (quality == "original" || !item.thumbReady) {
             Syno.originalUrl(item) to "o_${item.id}_${item.cacheKey}"
         } else {
             val s = if (item.hasXl) "xl" else "m"
@@ -581,7 +582,7 @@ private fun VideoPoster(item: Item, onTap: () -> Unit, onPlay: () -> Unit) {
         AsyncImage(
             model = remember(item.id) {
                 ImageRequest.Builder(ctx)
-                    .data(Syno.thumbUrl(item.thumbUnitId, item.cacheKey, s))
+                    .data(com.kakario.synogallery.thumbData(item, s))
                     .memoryCacheKey(key).diskCacheKey(key)
                     .placeholderMemoryCacheKey(Syno.thumbKey(item.thumbUnitId, item.cacheKey, Settings.thumbSize))
                     .build()
