@@ -1,4 +1,4 @@
-@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@file:kotlin.OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package com.kakario.synogallery.ui
 
