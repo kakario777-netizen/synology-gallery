@@ -58,6 +58,7 @@ object LocalThumbs {
             AppLog.add("썸네일", "NAS에 없는 썸네일 만들기 시작 (${queue.size}장)")
             var fails = 0
             while (Settings.autoLocalThumbs) {
+                UiBusy.waitIdle()
                 // 최신 사진부터
                 val next = queue.values.maxByOrNull { it.time } ?: break
                 val ok = get(next) != null

@@ -175,6 +175,7 @@ object Similar {
         val lines = StringBuilder()
         var done = 0
         for (chunk in items.chunked(24)) {
+            UiBusy.waitIdle()
             val results = coroutineScope {
                 chunk.map { item ->
                     async {

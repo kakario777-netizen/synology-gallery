@@ -29,7 +29,9 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // 최적화 빌드: 코드를 줄이고 다듬어서 스크롤·화면 전환이 부드러워짐
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("release")
         }
         debug {
@@ -59,6 +61,8 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.core:core-ktx:1.15.0")
+    // 자주 쓰는 화면을 설치할 때 미리 준비 (첫 스크롤부터 부드럽게)
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     implementation("androidx.biometric:biometric:1.1.0")
     implementation("androidx.fragment:fragment-ktx:1.8.5")
     implementation("androidx.activity:activity-compose:1.9.3")

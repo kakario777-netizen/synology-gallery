@@ -157,6 +157,14 @@ fun SettingsScreen(nav: NavController, onLogout: () -> Unit) {
             }
             item {
                 Toggle(
+                    "전체 썸네일 미리 받기",
+                    "모든 사진의 썸네일을 최신 사진부터 폰에 받아 둬요. 다 받으면 스크롤할 때 회색 칸 없이 바로 떠요",
+                    Settings.prefetchThumbs,
+                ) { Settings.prefetchThumbs = it }
+                if (com.kakario.synogallery.ThumbPrefetch.pending > 0) Hint("받는 중… 남은 ${com.kakario.synogallery.ThumbPrefetch.pending}장")
+            }
+            item {
+                Toggle(
                     "없는 썸네일 미리 만들기",
                     "NAS가 썸네일을 안 만들어 둔 사진·영상(HEIC·HEVC 등)을 앱을 켜 둔 동안 미리 전부 만들어 둬요",
                     Settings.autoLocalThumbs,

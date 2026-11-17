@@ -3,6 +3,7 @@ package com.kakario.synogallery
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
 import okhttp3.HttpUrl
@@ -31,6 +32,10 @@ object Syno {
     /** 로그인(또는 주소 변경)될 때마다 올라감 → 썸네일 주소를 다시 만들게 함 */
     var sessionTick by androidx.compose.runtime.mutableIntStateOf(0)
         private set
+
+    /** 이번 세션이 NAS에서 실제로 확인됐는지 (기억해 둔 세션을 쓸 때는 첫 요청이 성공해야 true) */
+    @Volatile
+    var validated = false
 
     /** 앱 시작 때 뒤에서 돌리는 로그인 (끝날 때까지 다른 요청은 기다림) */
     @Volatile
@@ -139,7 +144,7 @@ object Syno {
     private suspend fun <T> call(block: suspend () -> T): T = withContext(Dispatchers.IO) {
         loginTask?.let { t -> if (t.isActive) runCatching { t.await() } }
         try {
-            block()
+            block().also { validated = true }
         } catch (e: Exception) {
             val pw = sessionPassword.ifEmpty { Settings.password }
             val qc = QuickConnect.extractId(Settings.host) != null
@@ -241,6 +246,9 @@ object Syno {
                 val data = post(target, params, withSid = false)
                 sid = data.optString("sid").ifEmpty { throw SynoException(-1, "로그인 응답에 세션이 없어요.") }
                 sessionTick++
+                validated = true
+                Settings.savedSid = sid.orEmpty()
+                Settings.savedSidFor = "${Settings.account}@${Settings.host}"
                 AppLog.add("로그인", "성공 (${Settings.account}, 세션 $session)")
                 sessionPassword = password
                 return
@@ -302,7 +310,40 @@ object Syno {
     }
 
     /** 앱 시작 때 자동 로그인: 지난 주소를 먼저 쓰고, 사진 권한 검사는 건너뜀 */
+    /**
+     * 지난번 로그인을 그대로 이어 씀 → 접속 과정 없이 바로 시작.
+     * 만료됐으면 첫 요청에서 알아채고 조용히 다시 로그인함.
+     */
+    private fun restoreSession(): Boolean {
+        val saved = Settings.savedSid
+        if (saved.isEmpty() || Settings.savedSidFor != "${Settings.account}@${Settings.host}") return false
+        val id = QuickConnect.extractId(Settings.host)
+        if (id != null) {
+            if (!Settings.lastBaseFor.equals(id, ignoreCase = true) || Settings.lastBase.isEmpty()) return false
+            applyResolved(id, Settings.lastBase, Settings.lastRoute, Settings.lastBaseInsecure)
+        }
+        sid = saved
+        sessionPassword = Settings.password
+        validated = false
+        sessionTick++
+        AppLog.add("로그인", "지난 로그인 이어서 사용 (접속 대기 없음)")
+        return true
+    }
+
     suspend fun quickLogin() = withContext(Dispatchers.IO) {
+        if (restoreSession()) {
+            // 뒤에서 가볍게 확인 (만료면 call()이 알아서 다시 로그인) — 로그인 작업과 따로 돌려야 서로 기다리지 않음
+            kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    countItems(AllSource)
+                    validated = true
+                    AppLog.add("로그인", "지난 로그인 확인됨")
+                } catch (e: Exception) {
+                    AppLog.err("로그인", "지난 로그인 확인 실패", e)
+                }
+            }
+            return@withContext
+        }
         AppLog.add("로그인", "자동 로그인 시작")
         try {
             doLogin(Settings.host, Settings.account, Settings.password, null, reResolve = false)
@@ -331,6 +372,8 @@ object Syno {
 
     fun logout() {
         AppLog.add("로그아웃", "로그아웃")
+        Settings.savedSid = ""
+        validated = false
         sid = null
         resolvedBase = null
         resolvedFor = null

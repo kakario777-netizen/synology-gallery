@@ -22,6 +22,7 @@ class App : Application(), ImageLoaderFactory {
         PlaceNames.init(this)
         ItemCache.init(this)
         LocalThumbs.init(this)
+        ThumbPrefetch.init(this)
     }
 
     override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)

@@ -138,6 +138,11 @@ class GalleryViewModel(private val source: Source, private val cacheKey: String)
     var sortVersion by mutableStateOf(0)
         private set
 
+    /** 화면에 그릴 줄 목록 (계산은 뒤쪽 일꾼이 함 → 스크롤이 멈칫하지 않음) */
+    internal var rows by mutableStateOf<List<GridRow>>(emptyList())
+    internal var keyToRow by mutableStateOf<Map<Any, Int>>(emptyMap())
+    internal var rowsKey: Any? = null
+
     /** 선택된 사진 id */
     val selected = mutableStateMapOf<Long, Unit>()
 
@@ -242,6 +247,7 @@ class GalleryViewModel(private val source: Source, private val cacheKey: String)
 
     fun ensureSimilar() {
         if (Settings.autoLocalThumbs && items.isNotEmpty()) com.kakario.synogallery.LocalThumbs.ensureAll(items.toList())
+        if (source == com.kakario.synogallery.AllSource && items.isNotEmpty()) com.kakario.synogallery.ThumbPrefetch.ensure(items.toList())
         if (!Settings.groupSimilar || Settings.sortBy != "takentime" || items.isEmpty()) return
         Similar.ensure(cacheKey, items.toList())
     }
@@ -268,7 +274,7 @@ class GalleryViewModel(private val source: Source, private val cacheKey: String)
     }
 }
 
-private sealed interface GridRow {
+internal sealed interface GridRow {
     val key: String
     val month: String
 
@@ -276,13 +282,13 @@ private sealed interface GridRow {
     val section: String
 }
 
-private data class HeaderRow(val label: String, override val month: String, val count: Int, val seq: Int = 0) : GridRow {
+internal data class HeaderRow(val label: String, override val month: String, val count: Int, val seq: Int = 0) : GridRow {
     override val key get() = "h_${seq}_$label"
     override val section get() = label
 }
 
 /** index: 대표 사진 위치, members: 묶인 사진 위치들 (묶음이 아니면 1개) */
-private data class CellRow(
+internal data class CellRow(
     val index: Int,
     val id: Long,
     val members: List<Int>,
@@ -292,7 +298,7 @@ private data class CellRow(
     override val key get() = "c_${index}_$id"
 }
 
-private fun buildRows(items: List<Item>, grouping: String, groups: List<List<Int>>?): List<GridRow> {
+internal fun buildRows(items: List<Item>, grouping: String, groups: List<List<Int>>?): List<GridRow> {
     val out = ArrayList<GridRow>(items.size + 64)
     var last: String? = null
     var headerAt = -1
@@ -424,16 +430,30 @@ fun GalleryGrid(
     val grouping = if (isVideos && !videoSort.startsWith("date")) "none" else Settings.grouping
     LaunchedEffect(videoSort, vm.end, isVideos) { if (isVideos && vm.end) vm.sortLocal(videoSort) }
 
-    LaunchedEffect(stack, Syno.sessionTick) { if (stack) vm.ensureSimilar() }
+    LaunchedEffect(stack, Syno.sessionTick) { vm.ensureSimilar() }
 
-    val rows = remember(vm.items.size, vm.sortVersion, grouping, stack, if (stack) simVersion else 0, simLevel) {
+    val rowsKey = listOf(vm.items.size, vm.sortVersion, grouping, stack, if (stack) simVersion else 0, simLevel)
+    LaunchedEffect(rowsKey) {
+        if (vm.rowsKey == rowsKey) return@LaunchedEffect
         val list = vm.items.toList()
-        buildRows(list, grouping, if (stack) Similar.groups(list) else null)
+        val (r, k) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            val built = buildRows(list, grouping, if (stack) Similar.groups(list) else null)
+            built to HashMap<Any, Int>(built.size * 2).apply { built.forEachIndexed { i, row -> put(row.key, i) } }
+        }
+        vm.rows = r
+        vm.keyToRow = k
+        vm.rowsKey = rowsKey
     }
-    val keyToRow = remember(rows) { HashMap<Any, Int>(rows.size * 2).apply { rows.forEachIndexed { i, r -> put(r.key, i) } } }
+    val rows = vm.rows
+    val keyToRow = vm.keyToRow
     val state = rememberLazyGridState()
     val currentRows by rememberUpdatedState(rows)
     val currentKeyToRow by rememberUpdatedState(keyToRow)
+
+    // 스크롤하는 동안은 뒤의 무거운 작업(분석·썸네일 만들기·미리 받기)을 잠깐 멈춤
+    LaunchedEffect(state) {
+        snapshotFlow { state.isScrollInProgress }.collect { com.kakario.synogallery.UiBusy.scrolling = it }
+    }
 
     // 스크롤하는 방향으로 앞쪽 두세 화면 분량 썸네일을 미리 불러 둠 → 한 박자 늦게 뜨는 것 방지
     LaunchedEffect(state, vm) {
@@ -464,7 +484,8 @@ fun GalleryGrid(
     }
 
     // 뷰어에서 돌아오면 마지막으로 본 사진 근처로
-    LaunchedEffect(Unit) {
+    LaunchedEffect(rows.isNotEmpty()) {
+        if (currentRows.isEmpty()) return@LaunchedEffect
         val idx = ViewerStore.lastIndex
         if (idx >= 0 && ViewerStore.sourceKey == gKey) {
             var ord = -1
@@ -915,13 +936,13 @@ fun Thumb(
     Box(
         Modifier
             .aspectRatio(1f)
-            .background(Palette.placeholder)
+            .background(com.kakario.synogallery.ThumbPrefetch.color(item.id)?.let { Color(it) } ?: Palette.placeholder)
             .clickable(onClick = onClick)
     ) {
         AsyncImage(
             // NAS 썸네일이 깨졌거나 없으면 폰에서 직접 만든 썸네일로
             model = if (fallback) com.kakario.synogallery.LocalThumb(item) else req,
-            onError = { if (!fallback && item.thumbReady && Syno.sid != null) fallback = true },
+            onError = { if (!fallback && item.thumbReady && Syno.sid != null && Syno.validated) fallback = true },
             contentDescription = item.filename,
             contentScale = if (square) ContentScale.Crop else ContentScale.Fit,
             modifier = Modifier.fillMaxSize().padding(if (selected) 10.dp else 0.dp),
