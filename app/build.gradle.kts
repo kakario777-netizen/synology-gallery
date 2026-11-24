@@ -20,10 +20,11 @@ android {
 
     signingConfigs {
         create("release") {
+            // 서명 키·비밀번호는 저장소에 두지 않고 GitHub Secrets에서 받아 씀
             storeFile = file("release.jks")
-            storePassword = "synogallery"
+            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
             keyAlias = "synogallery"
-            keyPassword = "synogallery"
+            keyPassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
         }
     }
 
