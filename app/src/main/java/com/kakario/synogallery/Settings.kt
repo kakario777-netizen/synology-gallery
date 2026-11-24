@@ -15,10 +15,9 @@ object Settings {
         sp = ctx.getSharedPreferences("settings", Context.MODE_PRIVATE)
         // 접속 정보는 안드로이드 키 저장소로 암호화한 별도 저장소에
         sec = try {
-            val key = androidx.security.crypto.MasterKey.Builder(ctx)
-                .setKeyScheme(androidx.security.crypto.MasterKey.KeyScheme.AES256_GCM).build()
+            val alias = androidx.security.crypto.MasterKeys.getOrCreate(androidx.security.crypto.MasterKeys.AES256_GCM_SPEC)
             androidx.security.crypto.EncryptedSharedPreferences.create(
-                ctx, "secure_settings", key,
+                "secure_settings", alias, ctx,
                 androidx.security.crypto.EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                 androidx.security.crypto.EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
             )
