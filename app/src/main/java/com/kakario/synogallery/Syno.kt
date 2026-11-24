@@ -372,7 +372,7 @@ object Syno {
     suspend fun login(host: String, account: String, password: String, otp: String?) =
         withContext(Dispatchers.IO) {
             try {
-                AppLog.add("로그인", "로그인 화면에서 로그인 시도 ($host)")
+                AppLog.add("로그인", "로그인 화면에서 로그인 시도")
                 doLogin(host, account, password, otp, reResolve = true)
                 checkPhotos(base)
             } catch (e: Exception) {

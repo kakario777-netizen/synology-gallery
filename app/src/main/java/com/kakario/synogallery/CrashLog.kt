@@ -30,7 +30,7 @@ object CrashLog {
                         SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.KOREA).format(Date()) +
                         " (스레드: ${t.name})\n" +
                         Runtime.getRuntime().let { r -> "메모리: 사용 ${(r.totalMemory() - r.freeMemory()) / 1048576}MB / 최대 ${r.maxMemory() / 1048576}MB" } +
-                        "\n\n" + sw.toString().take(6000)
+                        "\n\n" + AppLog.mask(sw.toString()).take(6000)
                 )
             } catch (_: Exception) {
             }

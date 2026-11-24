@@ -29,7 +29,7 @@ object AppLog {
                 val keep = f.readText().takeLast((MAX / 2).toInt())
                 f.writeText(keep.substring(keep.indexOf('\n') + 1))
             }
-            f.appendText("${fmt.format(Date())} [$kind] ${msg.replace('\n', ' ')}\n")
+            f.appendText("${fmt.format(Date())} [$kind] ${mask(msg).replace('\n', ' ')}\n")
         } catch (_: Exception) {
         }
     }
@@ -47,4 +47,11 @@ object AppLog {
     fun clear() {
         file?.delete()
     }
+
+    /** 기록에 NAS 주소·IP·세션값이 남지 않게 가림 (복사해서 공유해도 안전하게) */
+    fun mask(s: String): String = s
+        .replace(Regex("(https?://)[^/\\s:]+"), "$1***")
+        .replace(Regex("\\b\\d{1,3}(\\.\\d{1,3}){3}\\b"), "***.***.***.***")
+        .replace(Regex("[A-Za-z0-9-]+\\.(quickconnect\\.(to|cn)|synology\\.me|direct\\.quickconnect\\.to)"), "***.$1")
+        .replace(Regex("(_sid|sid|passwd|SynoToken)=[^&\\s]+"), "$1=***")
 }

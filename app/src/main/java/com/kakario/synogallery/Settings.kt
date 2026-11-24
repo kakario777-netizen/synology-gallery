@@ -13,7 +13,39 @@ object Settings {
 
     fun init(ctx: Context) {
         sp = ctx.getSharedPreferences("settings", Context.MODE_PRIVATE)
+        // 접속 정보는 안드로이드 키 저장소로 암호화한 별도 저장소에
+        sec = try {
+            val key = androidx.security.crypto.MasterKey.Builder(ctx)
+                .setKeyScheme(androidx.security.crypto.MasterKey.KeyScheme.AES256_GCM).build()
+            androidx.security.crypto.EncryptedSharedPreferences.create(
+                ctx, "secure_settings", key,
+                androidx.security.crypto.EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                androidx.security.crypto.EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+            )
+        } catch (e: Exception) {
+            AppLog.err("보안", "암호화 저장소를 열지 못함", e)
+            sp
+        }
+        // 예전 버전에서 그냥 저장했던 접속 정보를 암호화 저장소로 옮김
+        if (sec !== sp) {
+            val e = sp.edit()
+            val s = sec.edit()
+            var moved = false
+            for (k in SECURE) if (sp.contains(k)) {
+                s.putString(k, sp.getString(k, ""))
+                e.remove(k)
+                moved = true
+            }
+            if (moved) {
+                s.commit()
+                e.commit()
+            }
+        }
     }
+
+    private lateinit var sec: SharedPreferences
+    private val SECURE = setOf("host", "account", "password", "savedSid", "savedSidFor", "lastBase", "lastBaseFor")
+    private fun store(key: String) = if (key in SECURE) sec else sp
 
     // 계정
     var host by P("host", "")
@@ -96,9 +128,9 @@ object Settings {
 
         @Suppress("UNCHECKED_CAST")
         private fun read(): T = when (def) {
-            is String -> Settings.sp.getString(key, def) as T
-            is Int -> Settings.sp.getInt(key, def) as T
-            is Boolean -> Settings.sp.getBoolean(key, def) as T
+            is String -> Settings.store(key).getString(key, def) as T
+            is Int -> Settings.store(key).getInt(key, def) as T
+            is Boolean -> Settings.store(key).getBoolean(key, def) as T
             else -> def
         }
 
@@ -108,7 +140,7 @@ object Settings {
 
         override fun setValue(thisRef: Any?, property: KProperty<*>, value: T) {
             state().value = value
-            val e = Settings.sp.edit()
+            val e = Settings.store(key).edit()
             when (value) {
                 is String -> e.putString(key, value)
                 is Int -> e.putInt(key, value)

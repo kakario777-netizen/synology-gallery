@@ -14,3 +14,9 @@
 
 # 앱 업데이트 수신기 등 매니페스트 등록 클래스
 -keep class com.kakario.synogallery.update.** { *; }
+
+# security-crypto(tink)
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn javax.annotation.**
+-dontwarn com.google.api.client.**
+-dontwarn org.joda.time.**

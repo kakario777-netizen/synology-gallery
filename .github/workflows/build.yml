@@ -1,8 +1,13 @@
 name: APK 빌드
 
 on:
+  # 앱 코드가 바뀐 푸시(=릴리스)와 수동 실행 때만 빌드. 설명 문서만 바뀌면 빌드 안 함.
+  # 외부인의 풀 리퀘스트로는 실행되지 않음 (pull_request 트리거 없음)
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
   workflow_dispatch:
 
 permissions:
@@ -21,10 +26,18 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: 서명 키 준비
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+        if: ${{ env.KEYSTORE_B64 != '' }}
+        run: echo "$KEYSTORE_B64" | base64 -d > app/release.jks
+
       - name: APK 만들기
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease --stacktrace
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
 
       - name: 파일 이름 정리
         run: |
